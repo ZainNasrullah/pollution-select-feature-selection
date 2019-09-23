@@ -21,6 +21,7 @@ class FeatureSelector:
         drop_every_n_iters=5,
         n_splits=3,
         n_iter=100,
+        feature_names=None,
     ):
         self.drop_every_n_iters = drop_every_n_iters
         self.n_iter = n_iter
@@ -29,6 +30,10 @@ class FeatureSelector:
         self.metric = performance_metric
         self.threshold = performance_threshold
         self.min_features = min_features
+
+        if feature_names:
+            assert type(feature_names) == list, "Feature names is not a list."
+            self._name_mapping = {idx: name for idx, name in enumerate(feature_names)}
 
         # check_estimator(self.model)
 
@@ -40,12 +45,14 @@ class FeatureSelector:
 
         self.X_orig = X
         self.retained_features_ = list(np.arange(n_features))
+        self.feature_importances_ = np.zeros(n_features)
         self.dropped_features_ = list()
         self.train_scores_ = []
         self.test_scores_ = []
         self.failures_ = 0
         self.iters_ = 0
-        self.feature_importances_ = np.zeros(n_features)
+        self._features_at_iter = list()
+        self._importances_at_iter = list()
 
         for iter_idx in range(self.n_iter):
             train_cv_scores = []
@@ -78,21 +85,42 @@ class FeatureSelector:
 
             self.train_scores_.append(np.mean(train_cv_scores))
             self.test_scores_.append(np.mean(test_cv_scores))
+            self._features_at_iter.append(self.retained_features_.copy())
+            self._importances_at_iter.append(np.copy(self.feature_importances_))
 
-            if (
-                iter_idx >= 5
-                and iter_idx % self.drop_every_n_iters == 0
-                and self.min_features
-                and len(self.retained_features_) > self.min_features
-            ):
-                min_feature = np.argmin(self.feature_importances_[self.retained_features_])
-                print("Dropping feature with index: ", min_feature)
-                self.dropped_features_.append(self.retained_features_.pop(min_feature))
+            self._eval_dropping_conditions(iter_idx)
 
             self.feature_importances_[self.retained_features_] = (
-                    mask_array[self.retained_features_] / self.iters_
+                mask_array[self.retained_features_] / self.iters_
             )
 
+    def transform(self, X):
+        assert (
+            self.retained_features_
+        ), "Selector has not been fit or retained feature list is empty."
+        return X[:, self.retained_features_]
+
+    def fit_transform(self, X, y):
+        self.fit(X, y)
+        return self.transform(X)
+
+    def _eval_dropping_conditions(self, iter_idx):
+        dropping_condition = (
+            iter_idx >= 5
+            and iter_idx % self.drop_every_n_iters == 0
+            and self.min_features
+            and len(self.retained_features_) > self.min_features
+        )
+
+        if dropping_condition:
+            min_feature = np.argmin(self.feature_importances_[self.retained_features_])
+            if hasattr(self, "_name_mapping"):
+                print("Dropping: ", self._name_mapping[min_feature])
+            else:
+                print(
+                    "Dropping feature with index:", self.retained_features_[min_feature]
+                )
+            self.dropped_features_.append(self.retained_features_.pop(min_feature))
 
     def _compare_to_pollution_mask(self, X_pollute, n_features):
         orig_idx = np.arange(0, n_features)
@@ -127,12 +155,30 @@ class FeatureSelector:
 
         return np.concatenate((X, X_pollute), axis=1)
 
+    def plot_test_scores_by_iters(self):
+        assert hasattr(self, "feature_importances_"), "Model has not been fit yet."
+        plt.plot(range(len(self.test_scores_)), self.test_scores_, marker='o')
+        plt.title("Test scores (average across k-folds) by iterations.")
+        plt.show()
+
+    def plot_test_scores_by_features(self):
+        assert hasattr(self, "feature_importances_"), "Model has not been fit yet."
+        feature_lens = [len(l) for l in self._features_at_iter]
+        scores_ = self.test_scores_
+        test_df = pd.DataFrame({"n_features": feature_lens, "test_score": scores_})
+        test_df_agg = test_df.groupby("n_features").mean()
+        plt.plot(test_df_agg.index, test_df_agg.test_score, marker='o')
+        plt.title("Test scores (average across k-folds) by number of features.")
+        plt.show()
+
 
 if __name__ == "__main__":
     iris = load_iris()
     X = iris.data
     y = iris.target
-    X_noise = np.concatenate((np.random.rand(150,1),X, np.random.rand(150, 1)), axis=1)
+    X_noise = np.concatenate(
+        (np.random.rand(150, 1), X, np.random.rand(150, 1)), axis=1
+    )
 
     def acc(y, preds):
         return np.mean(y == preds)
@@ -142,5 +188,9 @@ if __name__ == "__main__":
         model, performance_threshold=0.7, performance_metric=acc, min_features=4
     )
 
-    selector.fit(X_noise, y)
+    X_dropped = selector.fit_transform(X_noise, y)
     print(selector.feature_importances_)
+    assert np.all(X_dropped == X), "Failed to recreate X using feature selector."
+
+    selector.plot_test_scores_by_iters()
+    selector.plot_test_scores_by_features()
