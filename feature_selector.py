@@ -111,7 +111,9 @@ class FeatureSelector:
 
         if not drop_features:
             if min_features:
-                warnings.warn("Min features specified but drop_features is false. Ignoring.")
+                warnings.warn(
+                    "Min features specified but drop_features is false. Ignoring."
+                )
             if drop_every_n_iters != 5:
                 warnings.warn(
                     "drop_every_n_iters modified but drop_features is false. Ignoring."
@@ -261,7 +263,9 @@ class FeatureSelector:
     def _create_mask_from_pollution(self, n_features):
         """Create mask by comparing original feature importances to polluted features"""
         pollute_shape = (
-            self.pollute_k + 2 if self.additional_pollution else self.pollute_k
+            self.pollute_k + self._additional_pollute_k
+            if self.additional_pollution
+            else self.pollute_k
         )
         pollute_idx = np.arange(n_features, n_features + pollute_shape)
         importances = self.model.feature_importances_
@@ -308,8 +312,10 @@ class FeatureSelector:
 
         for i, feat_idx in enumerate(random_feats):
             X_pollute[:, i] = np.random.permutation(X[:, feat_idx])
-        X_pollute[:, i + 1] = np.random.randint(0, 2, n_samples)
-        X_pollute[:, i + 2] = np.random.rand(n_samples)
+
+        if self.additional_pollution:
+            X_pollute[:, i + 1] = np.random.randint(0, 2, n_samples)
+            X_pollute[:, i + 2] = np.random.rand(n_samples)
 
         return np.concatenate((X, X_pollute), axis=1)
 
