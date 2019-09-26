@@ -1,6 +1,7 @@
 from sklearn.datasets import load_iris
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.exceptions import NotFittedError
 
 import numpy as np
 import pandas as pd
@@ -103,11 +104,12 @@ class FeatureSelector:
         self.use_predict_proba = use_predict_proba
 
         if feature_names:
-            assert type(feature_names) == list, "Feature names is not a list."
+            if type(feature_names) != list:
+                raise TypeError("Feature names is not a list.")
             self._name_mapping = {idx: name for idx, name in enumerate(feature_names)}
 
-        if pollute_type:
-            assert type(pollute_k) == int, "pollute k must be an integer"
+        if pollute_type and type(pollute_k) != int:
+            raise TypeError("Pollute k must be an integer.")
 
         if not drop_features:
             if min_features:
@@ -123,8 +125,10 @@ class FeatureSelector:
         self._additional_pollute_k = 2 if self.additional_pollution else 0
         self._drop_start_iter = 5
 
-        assert hasattr(model, "fit")
-        assert hasattr(model, "predict")
+        if not hasattr(model, "fit"):
+            raise TypeError("Model does not have a fit() method")
+        if not hasattr(model, "predict"):
+            raise TypeError("Model does not have a predict() method")
 
     def fit(self, X, y):
         """Find consistently useful features
@@ -146,7 +150,8 @@ class FeatureSelector:
         self._init_fit_params(X)
         n_features = X.shape[1]
         mask_array = np.zeros(n_features)
-        assert self.pollute_k < n_features, "Pollute k must be less than # of features"
+        if self.pollute_k > n_features:
+            raise ValueError("Pollute k must be less than or equal # of features")
 
         for iter_idx in range(self.n_iter):
             X_sample = X[:, self.retained_features_]
@@ -196,9 +201,10 @@ class FeatureSelector:
             Input samples with a subset of features selected
 
         """
-        assert (
-            self.retained_features_
-        ), "Selector has not been fit or retained feature list is empty."
+        if not hasattr(self, "retained_features_"):
+            raise NotFittedError(
+                "Selector has not been fit or retained feature list is empty."
+            )
         return X[:, self.retained_features_]
 
     def fit_transform(self, X, y):
@@ -279,7 +285,8 @@ class FeatureSelector:
     def _fit_predict_score(self, X_train, X_test, y_train, y_test):
         """fit and predict model, returning scores on defined metric"""
         self.model.fit(X_train, y_train)
-        assert hasattr(self.model, "feature_importances_")
+        if not hasattr(self.model, "feature_importances_"):
+            raise NotFittedError("Selector not fitted (no feature importances).")
 
         if not self.use_predict_proba:
             train_preds = self.model.predict(X_train)
@@ -321,14 +328,17 @@ class FeatureSelector:
 
     def plot_test_scores_by_iters(self):
         """Plot test scores against feature importances"""
-        assert hasattr(self, "feature_importances_"), "Model has not been fit yet."
+        if not hasattr(self, "feature_importances_"):
+            raise NotFittedError("Model has not been fit yet.")
+
         plt.plot(range(len(self.test_scores_)), self.test_scores_, marker="o")
         plt.title("Test scores (average across k-folds) by iterations.")
         plt.show()
 
     def plot_test_scores_by_n_features(self):
         """Plot test scorse against n_features"""
-        assert hasattr(self, "feature_importances_"), "Model has not been fit yet."
+        if not hasattr(self, "feature_importances_"):
+            raise NotFittedError("Model has not been fit yet.")
         feature_lens = [len(l) for l in self._features_at_iter]
         scores_ = self.test_scores_
         test_df = pd.DataFrame({"n_features": feature_lens, "test_score": scores_})
