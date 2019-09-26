@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import warnings
 import seaborn as sns
 
 
@@ -110,9 +111,9 @@ class FeatureSelector:
 
         if not drop_features:
             if min_features:
-                Warning("Min features specified but drop_features is false. Ignoring.")
+                warnings.warn("Min features specified but drop_features is false. Ignoring.")
             if drop_every_n_iters != 5:
-                Warning(
+                warnings.warn(
                     "drop_every_n_iters modified but drop_features is false. Ignoring."
                 )
 
