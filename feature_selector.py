@@ -138,21 +138,20 @@ class FeatureSelector:
         assert self.pollute_k < n_features, "Pollute k must be less than # of features"
 
         for iter_idx in range(self.n_iter):
-
-            _, X_sample, _, y_sample = train_test_split(
-                X, y, test_size=self.subsample_ratio, stratify=y, shuffle=True
-            )
-
-            X_sample = X_sample[:, self.retained_features_]
+            X_sample = X[:, self.retained_features_]
             n_features = X_sample.shape[1]
-
             X_pollute = self._pollute_data(X_sample)
+
             X_train, X_test, y_train, y_test = train_test_split(
-                X_pollute, y_sample, test_size=self._test_size, stratify=y_sample
+                X_pollute,
+                y,
+                test_size=(1 - self.subsample_ratio),
+                stratify=y,
+                shuffle=True,
             )
 
             train_score, test_score = self._fit_predict_score(
-                X_test, X_train, y_test, y_train
+                X_train, X_test, y_train, y_test
             )
 
             if test_score >= self.threshold:
@@ -266,7 +265,7 @@ class FeatureSelector:
 
         return mask
 
-    def _fit_predict_score(self, X_test, X_train, y_test, y_train):
+    def _fit_predict_score(self, X_train, X_test, y_train, y_test):
         """fit and predict model, returning scores on defined metric"""
         self.model.fit(X_train, y_train)
 
@@ -340,6 +339,8 @@ if __name__ == "__main__":
     selector = FeatureSelector(
         model,
         n_iter=100,
+        pollute_type="random_k",
+        drop_features=False,
         performance_threshold=0.7,
         performance_function=acc,
         min_features=4,
