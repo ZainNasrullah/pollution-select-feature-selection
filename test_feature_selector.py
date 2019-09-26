@@ -12,6 +12,9 @@ class TestFeatureSelector(unittest.TestCase):
         self.X = iris.data
         self.y = iris.target
         self.model = RandomForestClassifier()
+        self.n_iter = 100
+        self.threshold = 0.7
+        self.min_features = 4
         self.X_noise = np.concatenate(
             (np.random.rand(150, 1), self.X, np.random.rand(150, 1)), axis=1
         )
@@ -20,16 +23,32 @@ class TestFeatureSelector(unittest.TestCase):
             return np.mean(y == preds)
         self.metric = acc
 
-    def test_drops_noisy(self):
+    def test_drops_noisy_pollute_random_k(self):
         """Should drop noisy features"""
         selector = FeatureSelector(
             self.model,
-            n_iter=100,
+            n_iter=self.n_iter,
             pollute_type="random_k",
             drop_features=True,
-            performance_threshold=0.7,
+            performance_threshold=self.threshold,
             performance_function=self.metric,
-            min_features=4,
+            min_features=self.min_features,
+        )
+        X_dropped = selector.fit_transform(self.X_noise, self.y)
+        self.assertEqual(self.X.shape, X_dropped.shape)
+        self.assertNotIn(0, selector.retained_features_)
+        self.assertNotIn(5, selector.retained_features_)
+
+    def test_drops_noisy_pollute_all(self):
+        """Should drop noisy features"""
+        selector = FeatureSelector(
+            self.model,
+            n_iter=self.n_iter,
+            pollute_type="all",
+            drop_features=True,
+            performance_threshold=self.threshold,
+            performance_function=self.metric,
+            min_features=self.min_features,
         )
         X_dropped = selector.fit_transform(self.X_noise, self.y)
         self.assertEqual(self.X.shape, X_dropped.shape)
@@ -40,10 +59,10 @@ class TestFeatureSelector(unittest.TestCase):
         """Should find at least 3 relevant features on Iris"""
         selector = FeatureSelector(
             self.model,
-            n_iter=100,
+            n_iter=self.n_iter,
             pollute_type="random_k",
             drop_features=False,
-            performance_threshold=0.7,
+            performance_threshold=self.threshold,
             performance_function=self.metric,
         )
         selector.fit(self.X_noise, self.y)
@@ -54,12 +73,12 @@ class TestFeatureSelector(unittest.TestCase):
         """Should find at least 3 relevant features on Iris"""
         selector = FeatureSelector(
             self.model,
-            n_iter=100,
+            n_iter=self.n_iter,
             pollute_type="random_k",
             drop_features=True,
-            performance_threshold=0.7,
+            performance_threshold=self.threshold,
             performance_function=self.metric,
-            min_features=4,
+            min_features=self.min_features,
         )
         selector.fit(self.X_noise, self.y)
         important_features = np.sum(selector.feature_importances_ > 0.7)
@@ -68,12 +87,12 @@ class TestFeatureSelector(unittest.TestCase):
     def test_sklearn_interface(self):
         selector = FeatureSelector(
             self.model,
-            n_iter=100,
+            n_iter=self.n_iter,
             pollute_type="random_k",
             drop_features=True,
-            performance_threshold=0.7,
+            performance_threshold=self.threshold,
             performance_function=self.metric,
-            min_features=4,
+            min_features=self.min_features,
         )
         self.assertTrue(hasattr(selector, "fit"))
         self.assertTrue(hasattr(selector, "transform"))
