@@ -119,7 +119,6 @@ class FeatureSelector:
 
         # parameters set using intuition
         self._additional_pollute_k = 2
-        self._test_size = 0.3
         self._drop_start_iter = 5
 
         assert hasattr(model, "fit")
