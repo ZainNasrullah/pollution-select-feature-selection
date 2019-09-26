@@ -98,6 +98,20 @@ class TestFeatureSelector(unittest.TestCase):
         self.assertTrue(hasattr(selector, "transform"))
         self.assertTrue(hasattr(selector, "fit_transform"))
 
+    def test_no_additional_pollution(self):
+        selector = FeatureSelector(
+            self.model,
+            n_iter=self.n_iter,
+            pollute_type="random_k",
+            drop_features=True,
+            performance_threshold=self.threshold,
+            performance_function=self.metric,
+            min_features=self.min_features,
+            additional_pollution=False
+        )
+        selector.fit(self.X_noise, self.y)
+        important_features = np.sum(selector.feature_importances_ > 0.7)
+        self.assertTrue(important_features >= 3)
 
 if __name__ == '__main__':
     unittest.main()
