@@ -1,7 +1,7 @@
 from sklearn.datasets import load_iris
 from sklearn.model_selection import KFold
-from sklearn.utils.estimator_checks import check_estimator
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 
 import numpy as np
 import pandas as pd
@@ -17,12 +17,21 @@ class FeatureSelector:
         model,
         performance_threshold,
         performance_metric,
+        pollute_type="random_k",
+        pollute_k=1,
+        additional_pollution=True,
         min_features=None,
         drop_every_n_iters=5,
         n_splits=3,
         n_iter=100,
         feature_names=None,
+        drop_features=False,
+        subsample_ratio=0.5,
     ):
+        self.drop_features = drop_features
+        self.additional_pollution = additional_pollution
+        self.pollute_k = pollute_k
+        self.pollute_type = pollute_type
         self.drop_every_n_iters = drop_every_n_iters
         self.n_iter = n_iter
         self.n_splits = n_splits
@@ -30,69 +39,61 @@ class FeatureSelector:
         self.metric = performance_metric
         self.threshold = performance_threshold
         self.min_features = min_features
+        self._additional_pollute_k = 2
+        self.subsample_ratio = subsample_ratio
 
         if feature_names:
             assert type(feature_names) == list, "Feature names is not a list."
             self._name_mapping = {idx: name for idx, name in enumerate(feature_names)}
 
+        if pollute_type:
+            assert type(pollute_k) == int, "pollute k must be an integer"
+
+        self._test_size = 0.3
+
         # check_estimator(self.model)
 
     def fit(self, X, y):
 
-        n_samples, n_features = X.shape
+        self._init_fit_params(X)
+        n_features = X.shape[1]
         mask_array = np.zeros(n_features)
-        cv = KFold(n_splits=self.n_splits, shuffle=True)
-
-        self.X_orig = X
-        self.retained_features_ = list(np.arange(n_features))
-        self.feature_importances_ = np.zeros(n_features)
-        self.dropped_features_ = list()
-        self.train_scores_ = []
-        self.test_scores_ = []
-        self.failures_ = 0
-        self.iters_ = 0
-        self._features_at_iter = list()
-        self._importances_at_iter = list()
+        assert self.pollute_k < n_features, "Pollute k must be less than # of features"
 
         for iter_idx in range(self.n_iter):
-            train_cv_scores = []
-            test_cv_scores = []
-            X = self.X_orig[:, self.retained_features_]
 
-            for train_idx, test_idx in cv.split(X, y):
+            _, X_sample, _, y_sample = train_test_split(
+                X, y, test_size=self.subsample_ratio, stratify=y, shuffle=True
+            )
 
-                pre_n_features = X.shape[1]
-                X_pollute = self._pollute_data(X)
-                X_train, y_train = X_pollute[train_idx], y[train_idx]
-                X_test, y_test = X_pollute[test_idx], y[test_idx]
+            X_sample = X_sample[:, self.retained_features_]
+            n_features = X_sample.shape[1]
 
-                train_score, test_score = self._fit_predict_score(
-                    X_test, X_train, y_test, y_train
+            X_pollute = self._pollute_data(X_sample)
+            X_train, X_test, y_train, y_test = train_test_split(
+                X_pollute, y_sample, test_size=self._test_size, stratify=y_sample
+            )
+
+            train_score, test_score = self._fit_predict_score(
+                X_test, X_train, y_test, y_train
+            )
+
+            if test_score >= self.threshold:
+                mask = self._compare_to_pollution_mask(n_features)
+                mask_array[self.retained_features_] += mask
+                self.iters_ += 1
+
+                self.feature_importances_[self.retained_features_] = (
+                    mask_array[self.retained_features_] / self.iters_
                 )
 
-                if test_score >= self.threshold:
-                    mask = self._compare_to_pollution_mask(X_pollute, pre_n_features)
-                    mask_array[self.retained_features_] += mask
-                    self.iters_ += 1
-                else:
-                    print(
-                        f"Did not meet test threshold: {self.metric}>{self.threshold}"
-                    )
-                    self.failures_ += 1
+            else:
+                print(f"Did not meet test threshold: {self.metric}>{self.threshold}")
+                self.failures_ += 1
 
-                train_cv_scores.append(train_score)
-                test_cv_scores.append(test_score)
-
-            self.train_scores_.append(np.mean(train_cv_scores))
-            self.test_scores_.append(np.mean(test_cv_scores))
-            self._features_at_iter.append(self.retained_features_.copy())
-            self._importances_at_iter.append(np.copy(self.feature_importances_))
-
-            self._eval_dropping_conditions(iter_idx)
-
-            self.feature_importances_[self.retained_features_] = (
-                mask_array[self.retained_features_] / self.iters_
-            )
+            self._record_iter(test_score, train_score)
+            if self.drop_features:
+                self._eval_dropping_conditions(iter_idx)
 
     def transform(self, X):
         assert (
@@ -103,6 +104,25 @@ class FeatureSelector:
     def fit_transform(self, X, y):
         self.fit(X, y)
         return self.transform(X)
+
+    def _record_iter(self, test_score, train_score):
+        self.train_scores_.append(train_score)
+        self.test_scores_.append(test_score)
+        self._features_at_iter.append(self.retained_features_.copy())
+        self._importances_at_iter.append(np.copy(self.feature_importances_))
+
+    def _init_fit_params(self, X_sample):
+        self.X_orig = X_sample
+        n_features = X_sample.shape[1]
+        self.retained_features_ = list(np.arange(n_features))
+        self.feature_importances_ = np.zeros(n_features)
+        self.dropped_features_ = list()
+        self.train_scores_ = []
+        self.test_scores_ = []
+        self.failures_ = 0
+        self.iters_ = 0
+        self._features_at_iter = list()
+        self._importances_at_iter = list()
 
     def _eval_dropping_conditions(self, iter_idx):
         dropping_condition = (
@@ -122,15 +142,18 @@ class FeatureSelector:
                 )
             self.dropped_features_.append(self.retained_features_.pop(min_feature))
 
-    def _compare_to_pollution_mask(self, X_pollute, n_features):
-        orig_idx = np.arange(0, n_features)
-        pollute_idx = np.arange(n_features, X_pollute.shape[1])[:-2]
-        importances = self.model.feature_importances_
-        mask = (
-            (importances[orig_idx] > importances[pollute_idx])
-            & (importances[orig_idx] > importances[-1])
-            & (importances[orig_idx] > importances[-2])
+    def _compare_to_pollution_mask(self, n_features):
+
+        pollute_shape = (
+            self.pollute_k + 2 if self.additional_pollution else self.pollute_k
         )
+        pollute_idx = np.arange(n_features, n_features + pollute_shape)
+        importances = self.model.feature_importances_
+
+        mask = np.zeros(n_features)
+        for i in range(n_features):
+            mask[i] = np.all(importances[i] > importances[pollute_idx])
+
         return mask
 
     def _fit_predict_score(self, X_test, X_train, y_test, y_train):
@@ -143,13 +166,23 @@ class FeatureSelector:
 
     def _pollute_data(self, X):
 
-        n_samples = X.shape[0]
-        pollute_shape = X.shape[1] + 2
+        n_samples, n_features = X.shape
+
+        if self.pollute_type == "all":
+            pollute_shape = X.shape[1]
+        elif self.pollute_type == "random_k":
+            pollute_shape = self.pollute_k
+        else:
+            raise Exception("pollute type not in ('all', 'random_k')")
+
+        pollute_shape += self._additional_pollute_k
         X_pollute = np.zeros(shape=(n_samples, pollute_shape))
+        random_feats = np.random.choice(
+            n_features, pollute_shape - self._additional_pollute_k, replace=None
+        )
 
-        for i in range(X.shape[1]):
-            X_pollute[:, i] = np.random.permutation(X[:, i])
-
+        for i, feat_idx in enumerate(random_feats):
+            X_pollute[:, i] = np.random.permutation(X[:, feat_idx])
         X_pollute[:, i + 1] = np.random.randint(0, 2, n_samples)
         X_pollute[:, i + 2] = np.random.rand(n_samples)
 
@@ -157,7 +190,7 @@ class FeatureSelector:
 
     def plot_test_scores_by_iters(self):
         assert hasattr(self, "feature_importances_"), "Model has not been fit yet."
-        plt.plot(range(len(self.test_scores_)), self.test_scores_, marker='o')
+        plt.plot(range(len(self.test_scores_)), self.test_scores_, marker="o")
         plt.title("Test scores (average across k-folds) by iterations.")
         plt.show()
 
@@ -167,7 +200,7 @@ class FeatureSelector:
         scores_ = self.test_scores_
         test_df = pd.DataFrame({"n_features": feature_lens, "test_score": scores_})
         test_df_agg = test_df.groupby("n_features").mean()
-        plt.plot(test_df_agg.index, test_df_agg.test_score, marker='o')
+        plt.plot(test_df_agg.index, test_df_agg.test_score, marker="o")
         plt.title("Test scores (average across k-folds) by number of features.")
         plt.show()
 
@@ -185,12 +218,15 @@ if __name__ == "__main__":
 
     model = RandomForestClassifier()
     selector = FeatureSelector(
-        model, performance_threshold=0.7, performance_metric=acc, min_features=4
+        model,
+        n_iter=100,
+        performance_threshold=0.7,
+        performance_metric=acc,
+        min_features=4,
     )
 
     X_dropped = selector.fit_transform(X_noise, y)
     print(selector.feature_importances_)
-    assert np.all(X_dropped == X), "Failed to recreate X using feature selector."
 
     selector.plot_test_scores_by_iters()
     selector.plot_test_scores_by_features()
