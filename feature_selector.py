@@ -75,7 +75,8 @@ class FeatureSelector:
             when `drop_features` is True.
 
         drop_every_n_iters : int, optional (default=5)
-            Drop a feature after every `drop_every_n_iters` iterations.
+            Drop a feature after every `drop_every_n_iters` iterations. If drop_features
+            is false, this value is ignored / not used.
 
         use_predict_proba : bool, optional (default=True)
             Sets the prediction mode
@@ -97,8 +98,8 @@ class FeatureSelector:
         self.additional_pollution = additional_pollution
         self.drop_features = drop_features
         self.min_features = min_features
-        self.use_predict_proba = use_predict_proba
         self.drop_every_n_iters = drop_every_n_iters
+        self.use_predict_proba = use_predict_proba
 
         if feature_names:
             assert type(feature_names) == list, "Feature names is not a list."
@@ -106,6 +107,14 @@ class FeatureSelector:
 
         if pollute_type:
             assert type(pollute_k) == int, "pollute k must be an integer"
+
+        if not drop_features:
+            if min_features:
+                Warning("Min features specified but drop_features is false. Ignoring.")
+            if drop_every_n_iters != 5:
+                Warning(
+                    "drop_every_n_iters modified but drop_features is false. Ignoring."
+                )
 
         # parameters set using intuition
         self._additional_pollute_k = 2
@@ -158,11 +167,9 @@ class FeatureSelector:
                 mask = self._create_mask_from_pollution(n_features)
                 mask_array[self.retained_features_] += mask
                 self.iters_ += 1
-
                 self.feature_importances_[self.retained_features_] = (
                     mask_array[self.retained_features_] / self.iters_
                 )
-
             else:
                 print(f"Did not meet test threshold: {self.metric}>{self.threshold}")
                 self.failures_ += 1
@@ -268,6 +275,7 @@ class FeatureSelector:
     def _fit_predict_score(self, X_train, X_test, y_train, y_test):
         """fit and predict model, returning scores on defined metric"""
         self.model.fit(X_train, y_train)
+        assert hasattr(self.model, "feature_importances_")
 
         if not self.use_predict_proba:
             train_preds = self.model.predict(X_train)
