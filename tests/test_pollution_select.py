@@ -1,5 +1,8 @@
+import sys
+sys.path.append("..")
+
 import unittest
-from feature_selector import FeatureSelector
+from pollution_select.pollution_select import PollutionSelect
 from sklearn.datasets import load_iris, make_classification
 from sklearn.ensemble import RandomForestClassifier
 
@@ -26,7 +29,7 @@ class TestOnIris(unittest.TestCase):
 
     def test_drops_noisy_pollute_random_k(self):
         """Should drop noisy features"""
-        selector = FeatureSelector(
+        selector = PollutionSelect(
             self.model,
             n_iter=self.n_iter,
             pollute_type="random_k",
@@ -42,7 +45,7 @@ class TestOnIris(unittest.TestCase):
 
     def test_drops_noisy_pollute_all(self):
         """Should drop noisy features"""
-        selector = FeatureSelector(
+        selector = PollutionSelect(
             self.model,
             n_iter=self.n_iter,
             pollute_type="all",
@@ -58,7 +61,7 @@ class TestOnIris(unittest.TestCase):
 
     def test_relevant_on_iris_without_drops(self):
         """Should find at least 3 relevant features on Iris"""
-        selector = FeatureSelector(
+        selector = PollutionSelect(
             self.model,
             n_iter=self.n_iter,
             pollute_type="random_k",
@@ -72,7 +75,7 @@ class TestOnIris(unittest.TestCase):
 
     def test_relevant_on_iris_with_drops(self):
         """Should find at least 3 relevant features on Iris"""
-        selector = FeatureSelector(
+        selector = PollutionSelect(
             self.model,
             n_iter=self.n_iter,
             pollute_type="random_k",
@@ -86,7 +89,7 @@ class TestOnIris(unittest.TestCase):
         self.assertTrue(important_features >= 3)
 
     def test_sklearn_interface(self):
-        selector = FeatureSelector(
+        selector = PollutionSelect(
             self.model,
             n_iter=self.n_iter,
             pollute_type="random_k",
@@ -100,7 +103,7 @@ class TestOnIris(unittest.TestCase):
         self.assertTrue(hasattr(selector, "fit_transform"))
 
     def test_no_additional_pollution(self):
-        selector = FeatureSelector(
+        selector = PollutionSelect(
             self.model,
             n_iter=self.n_iter,
             pollute_type="random_k",
@@ -129,7 +132,7 @@ class TestOnMakeClassification(unittest.TestCase):
 
     def test_relevant_make_classification(self):
         """Should find at least 10 relevant features on make_classification"""
-        selector = FeatureSelector(
+        selector = PollutionSelect(
             self.model,
             n_iter=self.n_iter,
             pollute_type="random_k",

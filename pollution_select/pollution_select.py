@@ -10,7 +10,7 @@ import warnings
 import seaborn as sns
 
 
-class FeatureSelector:
+class PollutionSelect:
     def __init__(
         self,
         model,
@@ -188,7 +188,7 @@ class FeatureSelector:
             else:
                 if self.verbose:
                     print(
-                        f"Did not meet test threshold: {self.metric}>{self.threshold}"
+                        f"Did not meet tests threshold: {self.metric}>{self.threshold}"
                     )
                 self.failures_ += 1
 
@@ -340,7 +340,7 @@ class FeatureSelector:
         return np.concatenate((X, X_pollute), axis=1)
 
     def plot_test_scores_by_iters(self):
-        """Plot test scores against feature importances"""
+        """Plot tests scores against feature importances"""
         if not hasattr(self, "feature_importances_"):
             raise NotFittedError("Model has not been fit yet.")
 
@@ -349,7 +349,7 @@ class FeatureSelector:
         plt.show()
 
     def plot_test_scores_by_n_features(self):
-        """Plot test scorse against n_features"""
+        """Plot tests scorse against n_features"""
         if not hasattr(self, "feature_importances_"):
             raise NotFittedError("Model has not been fit yet.")
         feature_lens = [len(l) for l in self._features_at_iter]
@@ -373,7 +373,7 @@ if __name__ == "__main__":
         return np.mean(y == preds)
 
     model = RandomForestClassifier()
-    selector = FeatureSelector(
+    selector = PollutionSelect(
         model,
         n_iter=100,
         pollute_type="random_k",
