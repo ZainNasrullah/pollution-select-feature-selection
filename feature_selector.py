@@ -120,6 +120,9 @@ class FeatureSelector:
                 warnings.warn(
                     "drop_every_n_iters modified but drop_features is false. Ignoring."
                 )
+        else:
+            if not min_features:
+                raise TypeError("Min features not defined for drop_features.")
 
         # parameters set using intuition
         self._additional_pollute_k = 2 if self.additional_pollution else 0
