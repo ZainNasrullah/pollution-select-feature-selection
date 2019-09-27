@@ -5,7 +5,7 @@ boruta and other iterative selection methods. It finds features that consistentl
 a desired performance criteria and are more important than random noise in
 monte carlo cross-validation. 
 
-# Algorithm
+## Algorithm
  - As input, Pollution Select receives a model, a performance evaluation function and a
  threshold. 
  - For n_iters:
