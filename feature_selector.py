@@ -26,6 +26,7 @@ class FeatureSelector:
         drop_every_n_iters=5,
         use_predict_proba=False,
         feature_names=None,
+        verbose=False,
     ):
         """
 
@@ -89,6 +90,9 @@ class FeatureSelector:
         feature_names : list of strings, optional (default=None)
             Names for the features in the dataset. Primarily used to understand which
             features are being dropped.
+
+        verbose : bool, optional (default=False)
+            Whether to print out features that are being dropped.
         """
         self.model = model
         self.metric = performance_function
@@ -102,6 +106,7 @@ class FeatureSelector:
         self.min_features = min_features
         self.drop_every_n_iters = drop_every_n_iters
         self.use_predict_proba = use_predict_proba
+        self.verbose = verbose
 
         if feature_names:
             if type(feature_names) != list:
@@ -181,7 +186,10 @@ class FeatureSelector:
                     mask_array[self.retained_features_] / self.iters_
                 )
             else:
-                print(f"Did not meet test threshold: {self.metric}>{self.threshold}")
+                if self.verbose:
+                    print(
+                        f"Did not meet test threshold: {self.metric}>{self.threshold}"
+                    )
                 self.failures_ += 1
 
             self._record_iter(test_score, train_score)
@@ -261,12 +269,14 @@ class FeatureSelector:
 
         if dropping_condition:
             min_feature = np.argmin(self.feature_importances_[self.retained_features_])
-            if hasattr(self, "_name_mapping"):
+            if hasattr(self, "_name_mapping") and self.verbose:
                 print("Dropping: ", self._name_mapping[min_feature])
             else:
-                print(
-                    "Dropping feature with index:", self.retained_features_[min_feature]
-                )
+                if self.verbose:
+                    print(
+                        "Dropping feature with index:",
+                        self.retained_features_[min_feature],
+                    )
             self.dropped_features_.append(self.retained_features_.pop(min_feature))
 
     def _create_mask_from_pollution(self, n_features):
