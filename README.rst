@@ -25,8 +25,12 @@ Algorithm
 Install
 -------
 
-The simplest way to install right now is to clone this repo and do a local install:
+The simplest way to install right now is to clone this repo and then do a local install:
 
+.. code-block:: console
+
+    git clone https://github.com/ZainNasrullah/feature-selection-experiments.git
+    cd feature-selection-experiments
     pip install .
 
 -----------
