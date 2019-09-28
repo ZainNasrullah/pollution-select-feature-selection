@@ -66,31 +66,31 @@ More complex example with feature dropping:
 
 .. code-block:: python
 
-    import numpy as np
-    from sklearn.datasets import load_iris
-    from sklearn.ensemble import RandomForestClassifier
-    from pollution_select import PollutionSelect
+   import numpy as np
+   from sklearn.datasets import load_iris
+   from sklearn.ensemble import RandomForestClassifier
+   from pollution_select import PollutionSelect
 
-    X, y = make_classification(
-        n_samples=1000, n_features=20, n_informative=10, n_redundant=5
-    )
+   X, y = make_classification(
+       n_samples=1000, n_features=20, n_informative=10, n_redundant=5
+   )
 
-    def acc(y, preds):
-        return np.mean(y == preds)
+   def acc(y, preds):
+       return np.mean(y == preds)
 
-    selector = PollutionSelect(
-        RandomForestClassifier(),
-        n_iter=100,
-        pollute_type="random_k",
-        drop_features=True,
-        performance_threshold=0.7,
-        performance_function=acc,
-        min_features=4,
-    )
+   selector = PollutionSelect(
+       RandomForestClassifier(),
+       n_iter=100,
+       pollute_type="random_k",
+       drop_features=True,
+       performance_threshold=0.7,
+       performance_function=acc,
+       min_features=4,
+   )
 
-    print(selector.retained_features_)
-    print(selector.dropped_features_)
-    print(selector.feature_importances_)
+   print(selector.retained_features_)
+   print(selector.dropped_features_)
+   print(selector.feature_importances_)
 
-    selector.plot_test_scores_by_iters()
-    selector.plot_test_scores_by_n_features()
+   selector.plot_test_scores_by_iters()
+   selector.plot_test_scores_by_n_features()
