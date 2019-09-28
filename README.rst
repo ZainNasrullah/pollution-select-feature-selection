@@ -33,8 +33,11 @@ The simplest way to install right now is to clone this repo and do a local insta
 Quick Start
 -----------
 
+Simple example without dropping any features:
+
 .. code-block:: python
 
+   import numpy as np
    from sklearn.datasets import load_iris
    from sklearn.ensemble import RandomForestClassifier
    from pollution_select import PollutionSelect
@@ -58,3 +61,36 @@ Quick Start
    selector.fit_transform(X_noise, y)
    print(selector.feature_importances_)
 
+
+More complex example with feature dropping:
+
+.. code-block:: python
+
+    import numpy as np
+    from sklearn.datasets import load_iris
+    from sklearn.ensemble import RandomForestClassifier
+    from pollution_select import PollutionSelect
+
+    X, y = make_classification(
+        n_samples=1000, n_features=20, n_informative=10, n_redundant=5
+    )
+
+    def acc(y, preds):
+        return np.mean(y == preds)
+
+    selector = PollutionSelect(
+        RandomForestClassifier(),
+        n_iter=100,
+        pollute_type="random_k",
+        drop_features=True,
+        performance_threshold=0.7,
+        performance_function=acc,
+        min_features=4,
+    )
+
+    print(selector.retained_features_)
+    print(selector.dropped_features_)
+    print(selector.feature_importances_)
+
+    selector.plot_test_scores_by_iters()
+    selector.plot_test_scores_by_n_features()
