@@ -12,15 +12,106 @@ import seaborn as sns
 
 
 class PollutionSelect:
+    """ Pollution-Select Feature Selection Algorithm
+
+    Parameters
+    ----------
+    model : base estimator with scikit-learn style API
+        Must have fit and predict method implemented as well as a
+        feature_importances_ attribute after fitting.
+
+    performance_function : function(y_true, y_predictions)
+        Function which measures performance. After fitting the model, it gets
+        against this function during cross-validation.
+
+    performance_threshold : float
+        Target performance that must be achieved by the model to update feature
+        importance values. If not met, the number of failures is incremented.
+
+    n_iter : int, optional (default=100)
+        Number of iterations to run the feature selection for. Larger values
+        will result in more accurate estimates of importances.
+
+    subsample_ratio : float, optional (default=0.5)
+        Ratio to subsample the dataset at each iteration for computational reasons.
+        Also introduces some randomness in the process.
+
+    pollute_type : str, optional (default="random_k")
+        Method used for generating the polluted features.
+
+        - if `all`, creates shadow features from every feature as in boruta
+        - if `random_k`, creates shadow features out of k random where where k is
+          defined by `pollute_k`
+
+    pollute_k : int, optional (default=1)
+        Number of features to pollute when pollute_type == `random_k`
+
+    additional_pollution : bool, optional (default=True)
+        Whether to include additional random noise features
+
+        - Random normal (mean 0, variance 1)
+        - Randomly drawn samples from [0, 1] using a discrete uniform distribution
+
+    drop_features : bool, optional (default=False)
+        Whether to drop features. By default performs a check every
+        `drop_every_n_iters` iterations and only drops the feature with consistently
+        minimum importance until `min features` remain. Starts after 5 iterations.
+
+    min_features : int or None, optional (default=None)
+        Whether to include a lower bound on the number of features; only relevant
+        when `drop_features` is True.
+
+    drop_every_n_iters : int, optional (default=5)
+        Drop a feature after every `drop_every_n_iters` iterations. If drop_features
+        is false, this value is ignored / not used.
+
+    use_predict_proba : bool, optional (default=True)
+        Sets the prediction mode
+
+        - if True, use the predict_proba() method instead
+        - else, use the predict() method
+
+    feature_names : list of strings, optional (default=None)
+        Names for the features in the dataset. Primarily used to understand which
+        features are being dropped.
+
+    verbose : bool, optional (default=False)
+        Whether to print out features that are being dropped.
+
+    Attributes
+    ----------
+    feature_importances_ : np array of shape = [n_features]
+        Importances of each feature after running fit
+
+    retained_features_ : list
+        Features retained after fitting; does not change from the original n_features
+        if the object has drop_features=False.
+
+    dropped_features_ : list
+        Features dropped during fitting; empty if drop_features=False.
+
+    train_scores_ :  array of shape = [self.n_iters]
+        Scores on the training set during fitting
+
+    test_scores_ :  array of shape = [self.n_iters]
+        Scores on the test set during fitting
+
+    failures_ : int
+        Number of times the test score failed to meet self.threshold
+
+    successes_ : int
+        Number of times the test score succeeded in meeting self.threshold
+    """
+
     def __init__(
-        self,
-        model,
-        performance_function,
-        performance_threshold,
-        n_iter=100,
-        subsample_ratio=0.5,
-        pollute_type="random_k",
-        pollute_k=1,
+            self,
+            model,
+            performance_function,
+            performance_threshold,
+            n_iter=100,
+            subsample_ratio=0.5,
+            pollute_type="random_k",
+            pollute_k=1,
         additional_pollution=True,
         drop_features=False,
         min_features=None,
@@ -29,72 +120,6 @@ class PollutionSelect:
         feature_names=None,
         verbose=False,
     ):
-        """
-
-        Parameters
-        ----------
-        model : base estimator with scikit-learn style API
-            Must have fit and predict method implemented as well as a
-            feature_importances_ attribute after fitting.
-
-        performance_function : function(y_true, y_predictions)
-            Function which measures performance. After fitting the model, it gets
-            against this function during cross-validation.
-
-        performance_threshold : float
-            Target performance that must be achieved by the model to update feature
-            importance values. If not met, the number of failures is incremented.
-
-        n_iter : int, optional (default=100)
-            Number of iterations to run the feature selection for. Larger values
-            will result in more accurate estimates of importances.
-
-        subsample_ratio : float, optional (default=0.5)
-            Ratio to subsample the dataset at each iteration for computational reasons.
-            Also introduces some randomness in the process.
-
-        pollute_type : str, optional (default="random_k")
-            Method used for generating the polluted features.
-
-            - if `all`, creates shadow features from every feature as in boruta
-            - if `random_k`, creates shadow features out of k random where where k is
-              defined by `pollute_k`
-
-        pollute_k : int, optional (default=1)
-            Number of features to pollute when pollute_type == `random_k`
-
-        additional_pollution : bool, optional (default=True)
-            Whether to include additional random noise features
-
-            - Random normal (mean 0, variance 1)
-            - Randomly drawn samples from [0, 1] using a discrete uniform distribution
-
-        drop_features : bool, optional (default=False)
-            Whether to drop features. By default performs a check every
-            `drop_every_n_iters` iterations and only drops the feature with consistently
-            minimum importance until `min features` remain. Starts after 5 iterations.
-
-        min_features : int or None, optional (default=None)
-            Whether to include a lower bound on the number of features; only relevant
-            when `drop_features` is True.
-
-        drop_every_n_iters : int, optional (default=5)
-            Drop a feature after every `drop_every_n_iters` iterations. If drop_features
-            is false, this value is ignored / not used.
-
-        use_predict_proba : bool, optional (default=True)
-            Sets the prediction mode
-
-            - if True, use the predict_proba() method instead
-            - else, use the predict() method
-
-        feature_names : list of strings, optional (default=None)
-            Names for the features in the dataset. Primarily used to understand which
-            features are being dropped.
-
-        verbose : bool, optional (default=False)
-            Whether to print out features that are being dropped.
-        """
         self.model = model
         self.metric = performance_function
         self.threshold = performance_threshold
@@ -186,9 +211,9 @@ class PollutionSelect:
                     n_features, pollute_shape, importances
                 )
                 mask_array[self.retained_features_] += mask
-                self.iters_ += 1
+                self.successes_ += 1
                 self.feature_importances_[self.retained_features_] = (
-                    mask_array[self.retained_features_] / self.iters_
+                    mask_array[self.retained_features_] / self.successes_
                 )
             else:
                 if self.verbose:
@@ -259,7 +284,7 @@ class PollutionSelect:
         self.train_scores_ = np.zeros(self.n_iter)
         self.test_scores_ = np.zeros(self.n_iter)
         self.failures_ = 0
-        self.iters_ = 0
+        self.successes_ = 0
         self._features_at_iter = list()
         self._importances_at_iter = np.zeros(shape=(self.n_iter, n_features))
 

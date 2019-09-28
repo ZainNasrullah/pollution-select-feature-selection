@@ -5,7 +5,7 @@ setup(
     version='0.1',
     packages=['pollution_select',],
     license='MIT',
-    long_description=open('README.md').read(),
+    long_description=open('README.rst').read(),
     install_requires=[
     "matplotlib==3.1.1",
     "numpy==1.17.2",
