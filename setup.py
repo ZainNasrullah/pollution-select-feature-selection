@@ -8,6 +8,7 @@ setup(
     long_description=open('README.rst').read(),
     install_requires=[
     "matplotlib==3.1.1",
+    "numba==0.45.1",
     "numpy==1.17.2",
     "pandas==0.25.1",
     "scikit-learn==0.21.3",
