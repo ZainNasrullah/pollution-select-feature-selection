@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import warnings
+from numba import njit, prange
 import seaborn as sns
 
 
@@ -179,7 +180,11 @@ class PollutionSelect:
             )
 
             if test_score >= self.threshold:
-                mask = self._create_mask_from_pollution(n_features)
+                pollute_shape = self._get_pollute_shape()
+                importances = self.model.feature_importances_
+                mask = self._create_mask_from_pollution(
+                    n_features, pollute_shape, importances
+                )
                 mask_array[self.retained_features_] += mask
                 self.iters_ += 1
                 self.feature_importances_[self.retained_features_] = (
@@ -192,7 +197,7 @@ class PollutionSelect:
                     )
                 self.failures_ += 1
 
-            self._record_iter(test_score, train_score)
+            self._record_iter(iter_idx, train_score, test_score)
             if self.drop_features:
                 self._eval_dropping_conditions(iter_idx)
 
@@ -237,12 +242,12 @@ class PollutionSelect:
         self.fit(X, y)
         return self.transform(X)
 
-    def _record_iter(self, test_score, train_score):
+    def _record_iter(self, iter_idx, train_score, test_score):
         """Track scores, features and importances at each iteration in the object"""
-        self.train_scores_.append(train_score)
-        self.test_scores_.append(test_score)
+        self.train_scores_[iter_idx] = train_score
+        self.test_scores_[iter_idx] = test_score
         self._features_at_iter.append(self.retained_features_.copy())
-        self._importances_at_iter.append(np.copy(self.feature_importances_))
+        self._importances_at_iter[iter_idx, :] = self.feature_importances_
 
     def _init_fit_params(self, X_sample):
         """Initialize model attributes defined during predict"""
@@ -251,12 +256,12 @@ class PollutionSelect:
         self.retained_features_ = list(np.arange(n_features))
         self.feature_importances_ = np.zeros(n_features)
         self.dropped_features_ = list()
-        self.train_scores_ = []
-        self.test_scores_ = []
+        self.train_scores_ = np.zeros(self.n_iter)
+        self.test_scores_ = np.zeros(self.n_iter)
         self.failures_ = 0
         self.iters_ = 0
         self._features_at_iter = list()
-        self._importances_at_iter = list()
+        self._importances_at_iter = np.zeros(shape=(self.n_iter, n_features))
 
     def _eval_dropping_conditions(self, iter_idx):
         """Evaluate conditions for dropping features and drop the min importance"""
@@ -279,21 +284,26 @@ class PollutionSelect:
                     )
             self.dropped_features_.append(self.retained_features_.pop(min_feature))
 
-    def _create_mask_from_pollution(self, n_features):
+    @staticmethod
+    @njit(parallel=True)
+    def _create_mask_from_pollution(n_features, pollute_shape, importances):
         """Create mask by comparing original feature importances to polluted features"""
+        pollute_idx = np.arange(n_features, n_features + pollute_shape)
+
+        mask = np.zeros(n_features)
+        for i in prange(n_features):
+            mask[i] = np.all(importances[i] > importances[pollute_idx])
+
+        return mask
+
+    def _get_pollute_shape(self):
+        """Create pollution shape"""
         pollute_shape = (
             self.pollute_k + self._additional_pollute_k
             if self.additional_pollution
             else self.pollute_k
         )
-        pollute_idx = np.arange(n_features, n_features + pollute_shape)
-        importances = self.model.feature_importances_
-
-        mask = np.zeros(n_features)
-        for i in range(n_features):
-            mask[i] = np.all(importances[i] > importances[pollute_idx])
-
-        return mask
+        return pollute_shape
 
     def _fit_predict_score(self, X_train, X_test, y_train, y_test):
         """fit and predict model, returning scores on defined metric"""
@@ -349,7 +359,7 @@ class PollutionSelect:
         plt.show()
 
     def plot_test_scores_by_n_features(self):
-        """Plot tests scorse against n_features"""
+        """Plot tests scores against n_features"""
         if not hasattr(self, "feature_importances_"):
             raise NotFittedError("Model has not been fit yet.")
         feature_lens = [len(l) for l in self._features_at_iter]
