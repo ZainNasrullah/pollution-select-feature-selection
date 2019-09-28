@@ -33,26 +33,28 @@ The simplest way to install right now is to clone this repo and do a local insta
 Quick Start
 -----------
 
-    from sklearn.datasets import load_iris
-    from sklearn.ensemble import RandomForestClassifier
-    from pollution_select import PollutionSelect
+.. code-block:: python
 
-    iris = load_iris()
-    X = iris.data
-    y = iris.target
-    X_noise = np.concatenate(
-        (np.random.rand(150, 1), X, np.random.rand(150, 1)), axis=1
-    )
+   from sklearn.datasets import load_iris
+   from sklearn.ensemble import RandomForestClassifier
+   from pollution_select import PollutionSelect
 
-    def acc(y, preds):
-        return np.mean(y == preds)
+   iris = load_iris()
+   X = iris.data
+   y = iris.target
+   X_noise = np.concatenate(
+       (np.random.rand(150, 1), X, np.random.rand(150, 1)), axis=1
+   )
 
-    selector = PollutionSelect(
-        RandomForestClassifier(),
-        performance_function=acc,
-        performance_threshold=0.7,
-    )
+   def acc(y, preds):
+       return np.mean(y == preds)
 
-    selector.fit_transform(X_noise, y)
-    print(selector.feature_importances_)
+   selector = PollutionSelect(
+       RandomForestClassifier(),
+       performance_function=acc,
+       performance_threshold=0.7,
+   )
+
+   selector.fit_transform(X_noise, y)
+   print(selector.feature_importances_)
 
