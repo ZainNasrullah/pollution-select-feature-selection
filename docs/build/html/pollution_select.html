@@ -1,0 +1,339 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>pollution_select package &mdash; Pollution-Select 0.1 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script type="text/javascript" src="_static/jquery.js"></script>
+        <script type="text/javascript" src="_static/underscore.js"></script>
+        <script type="text/javascript" src="_static/doctools.js"></script>
+        <script type="text/javascript" src="_static/language_data.js"></script>
+    
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="index.html" class="icon icon-home"> Pollution-Select
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <!-- Local TOC -->
+              <div class="local-toc"><ul>
+<li><a class="reference internal" href="#">pollution_select package</a><ul>
+<li><a class="reference internal" href="#submodules">Submodules</a></li>
+<li><a class="reference internal" href="#module-pollution_select.pollution_select">pollution_select.pollution_select module</a></li>
+<li><a class="reference internal" href="#module-pollution_select">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</div>
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Pollution-Select</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html">Docs</a> &raquo;</li>
+        
+      <li>pollution_select package</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/pollution_select.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="pollution-select-package">
+<h1>pollution_select package<a class="headerlink" href="#pollution-select-package" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="module-pollution_select.pollution_select">
+<span id="pollution-select-pollution-select-module"></span><h2>pollution_select.pollution_select module<a class="headerlink" href="#module-pollution_select.pollution_select" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="pollution_select.pollution_select.PollutionSelect">
+<em class="property">class </em><code class="sig-prename descclassname">pollution_select.pollution_select.</code><code class="sig-name descname">PollutionSelect</code><span class="sig-paren">(</span><em class="sig-param">model</em>, <em class="sig-param">performance_function</em>, <em class="sig-param">performance_threshold</em>, <em class="sig-param">n_iter=100</em>, <em class="sig-param">subsample_ratio=0.5</em>, <em class="sig-param">pollute_type='random_k'</em>, <em class="sig-param">pollute_k=1</em>, <em class="sig-param">additional_pollution=True</em>, <em class="sig-param">drop_features=False</em>, <em class="sig-param">min_features=None</em>, <em class="sig-param">drop_every_n_iters=5</em>, <em class="sig-param">use_predict_proba=False</em>, <em class="sig-param">feature_names=None</em>, <em class="sig-param">verbose=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pollution_select/pollution_select.html#PollutionSelect"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pollution_select.pollution_select.PollutionSelect" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Pollution-Select Feature Selection Algorithm</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>base estimator with scikit-learn style API</em>) – Must have fit and predict method implemented as well as a
+<a href="#id1"><span class="problematic" id="id2">feature_importances_</span></a> attribute after fitting.</p></li>
+<li><p><strong>performance_function</strong> (<em>function(y_true, y_predictions)</em>) – Function which measures performance. After fitting the model, it gets
+against this function during cross-validation.</p></li>
+<li><p><strong>performance_threshold</strong> (<em>float</em>) – Target performance that must be achieved by the model to update feature
+importance values. If not met, the number of failures is incremented.</p></li>
+<li><p><strong>n_iter</strong> (<em>int, optional (default=100)</em>) – Number of iterations to run the feature selection for. Larger values
+will result in more accurate estimates of importances.</p></li>
+<li><p><strong>subsample_ratio</strong> (<em>float, optional (default=0.5)</em>) – Ratio to subsample the dataset at each iteration for computational reasons.
+Also introduces some randomness in the process.</p></li>
+<li><p><strong>pollute_type</strong> (<em>str, optional (default=”random_k”)</em>) – Method used for generating the polluted features.</p>
+<ul>
+<li><p>if <cite>all</cite>, creates shadow features from every feature as in boruta</p></li>
+<li><p>if <cite>random_k</cite>, creates shadow features out of k random where where k is
+defined by <cite>pollute_k</cite></p></li>
+</ul>
+</li>
+<li><p><strong>pollute_k</strong> (<em>int, optional (default=1)</em>) – Number of features to pollute when pollute_type == <cite>random_k</cite></p></li>
+<li><p><strong>additional_pollution</strong> (<em>bool, optional (default=True)</em>) – Whether to include additional random noise features</p>
+<ul>
+<li><p>Random normal (mean 0, variance 1)</p></li>
+<li><p>Randomly drawn samples from [0, 1] using a discrete uniform distribution</p></li>
+</ul>
+</li>
+<li><p><strong>drop_features</strong> (<em>bool, optional (default=False)</em>) – Whether to drop features. By default performs a check every
+<cite>drop_every_n_iters</cite> iterations and only drops the feature with consistently
+minimum importance until <cite>min features</cite> remain. Starts after 5 iterations.</p></li>
+<li><p><strong>min_features</strong> (<em>int or None, optional (default=None)</em>) – Whether to include a lower bound on the number of features; only relevant
+when <cite>drop_features</cite> is True.</p></li>
+<li><p><strong>drop_every_n_iters</strong> (<em>int, optional (default=5)</em>) – Drop a feature after every <cite>drop_every_n_iters</cite> iterations. If drop_features
+is false, this value is ignored / not used.</p></li>
+<li><p><strong>use_predict_proba</strong> (<em>bool, optional (default=True)</em>) – Sets the prediction mode</p>
+<ul>
+<li><p>if True, use the predict_proba() method instead</p></li>
+<li><p>else, use the predict() method</p></li>
+</ul>
+</li>
+<li><p><strong>feature_names</strong> (<em>list of strings, optional (default=None)</em>) – Names for the features in the dataset. Primarily used to understand which
+features are being dropped.</p></li>
+<li><p><strong>verbose</strong> (<em>bool, optional (default=False)</em>) – Whether to print out features that are being dropped.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Variables</dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>feature_importances_</strong> (<em>np array of shape =</em><em> [</em><em>n_features</em><em>]</em>) – Importances of each feature after running fit</p></li>
+<li><p><strong>retained_features_</strong> (<em>list</em>) – Features retained after fitting; does not change from the original n_features
+if the object has drop_features=False.</p></li>
+<li><p><strong>dropped_features_</strong> (<em>list</em>) – Features dropped during fitting; empty if drop_features=False.</p></li>
+<li><p><strong>train_scores_</strong> (<em>array of shape =</em><em> [</em><em>self.n_iters</em><em>]</em>) – Scores on the training set during fitting</p></li>
+<li><p><strong>test_scores_</strong> (<em>array of shape =</em><em> [</em><em>self.n_iters</em><em>]</em>) – Scores on the test set during fitting</p></li>
+<li><p><strong>failures_</strong> (<em>int</em>) – Number of times the test score failed to meet self.threshold</p></li>
+<li><p><strong>successes_</strong> (<em>int</em>) – Number of times the test score succeeded in meeting self.threshold</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="method">
+<dt id="pollution_select.pollution_select.PollutionSelect.fit">
+<code class="sig-name descname">fit</code><span class="sig-paren">(</span><em class="sig-param">X</em>, <em class="sig-param">y</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pollution_select/pollution_select.html#PollutionSelect.fit"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pollution_select.pollution_select.PollutionSelect.fit" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find consistently useful features</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>X</strong> (<em>array-like of shape = [n_samples, n_features]</em>) – Input samples</p></li>
+<li><p><strong>y</strong> (<em>array-like of shape [n_samples,]</em>) – Target labels</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>self</strong></p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>object</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="pollution_select.pollution_select.PollutionSelect.fit_transform">
+<code class="sig-name descname">fit_transform</code><span class="sig-paren">(</span><em class="sig-param">X</em>, <em class="sig-param">y</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pollution_select/pollution_select.html#PollutionSelect.fit_transform"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pollution_select.pollution_select.PollutionSelect.fit_transform" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>X</strong> (<em>array-like of shape = [n_samples, n_features]</em>) – Input samples</p></li>
+<li><p><strong>y</strong> (<em>array-like of shape [n_samples,]</em>) – Target labels</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>X_transformed</strong> – Input samples with a subset of features selected</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>array-like of shape = [n_samples, <a href="#id3"><span class="problematic" id="id4">self.retained_features_</span></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="pollution_select.pollution_select.PollutionSelect.plot_test_scores_by_iters">
+<code class="sig-name descname">plot_test_scores_by_iters</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pollution_select/pollution_select.html#PollutionSelect.plot_test_scores_by_iters"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pollution_select.pollution_select.PollutionSelect.plot_test_scores_by_iters" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot tests scores against feature importances</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="pollution_select.pollution_select.PollutionSelect.plot_test_scores_by_n_features">
+<code class="sig-name descname">plot_test_scores_by_n_features</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pollution_select/pollution_select.html#PollutionSelect.plot_test_scores_by_n_features"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pollution_select.pollution_select.PollutionSelect.plot_test_scores_by_n_features" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot tests scores against n_features</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="pollution_select.pollution_select.PollutionSelect.transform">
+<code class="sig-name descname">transform</code><span class="sig-paren">(</span><em class="sig-param">X</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pollution_select/pollution_select.html#PollutionSelect.transform"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pollution_select.pollution_select.PollutionSelect.transform" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the dataset with the selected features</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>X</strong> (<em>array-like of shape = [n_samples, n_features]</em>) – Input samples</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>X_transformed</strong> – Input samples with a subset of features selected</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>array-like of shape = [n_samples, <a href="#id5"><span class="problematic" id="id6">self.retained_features_</span></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-pollution_select">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-pollution_select" title="Permalink to this headline">¶</a></h2>
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2019, Zain Nasrullah
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

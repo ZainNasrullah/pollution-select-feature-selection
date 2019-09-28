@@ -1,0 +1,22 @@
+tests package
+=============
+
+Submodules
+----------
+
+tests.test\_pollution\_select module
+------------------------------------
+
+.. automodule:: tests.test_pollution_select
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+
+Module contents
+---------------
+
+.. automodule:: tests
+   :members:
+   :undoc-members:
+   :show-inheritance:
