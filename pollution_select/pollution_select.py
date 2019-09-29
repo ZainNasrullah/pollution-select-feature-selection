@@ -421,4 +421,5 @@ if __name__ == "__main__":
     X_dropped = selector.fit_transform(X, y)
     end = time.time()
     print(end - start)
+    print(selector.feature_importances_)
 
