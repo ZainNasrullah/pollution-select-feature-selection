@@ -1,4 +1,4 @@
-from sklearn.datasets import load_iris
+from sklearn.datasets import load_iris, make_classification
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.exceptions import NotFittedError
@@ -9,6 +9,11 @@ import matplotlib.pyplot as plt
 import warnings
 from numba import njit, prange
 import seaborn as sns
+import multiprocessing as mp
+
+
+def acc(y, preds):
+    return np.mean(y == preds)
 
 
 class PollutionSelect:
@@ -187,46 +192,54 @@ class PollutionSelect:
         if self.pollute_k > n_features:
             raise ValueError("Pollute k must be less than or equal # of features")
 
+        num_workers = mp.cpu_count()
+        pool = mp.Pool(num_workers)
+
+        results = []
         for iter_idx in range(self.n_iter):
-            X_sample = X[:, self.retained_features_]
-            n_features = X_sample.shape[1]
-            X_pollute = self._pollute_data(X_sample)
+            results.append(pool.apply_async(self._find_pollute_mask, args=(X, y)))
+        pool.close()
+        pool.join()
 
-            X_train, X_test, y_train, y_test = train_test_split(
-                X_pollute,
-                y,
-                test_size=(1 - self.subsample_ratio),
-                stratify=y,
-                shuffle=True,
-            )
+        results = [result.get() for result in results]
+        masks, train_scores, test_scores = list(zip(*results))
 
-            train_score, test_score = self._fit_predict_score(
-                X_train, X_test, y_train, y_test
-            )
+        successes = [m for m in masks if m is not None]
+        self.successes_ += len(successes)
+        self.failures_ += len([m for m in masks if m is None])
+        mask_array += np.sum(successes, axis=0)
 
-            if test_score >= self.threshold:
-                pollute_shape = self._get_pollute_shape()
-                importances = self.model.feature_importances_
-                mask = self._create_mask_from_pollution(
-                    n_features, pollute_shape, importances
-                )
-                mask_array[self.retained_features_] += mask
-                self.successes_ += 1
-                self.feature_importances_[self.retained_features_] = (
-                    mask_array[self.retained_features_] / self.successes_
-                )
-            else:
-                if self.verbose:
-                    print(
-                        f"Did not meet tests threshold: {self.metric}>{self.threshold}"
-                    )
-                self.failures_ += 1
-
-            self._record_iter(iter_idx, train_score, test_score)
-            if self.drop_features:
-                self._eval_dropping_conditions(iter_idx)
+        self.feature_importances_ = mask_array / self.successes_
 
         return self
+
+    def _find_pollute_mask(self, X, y):
+        X_sample = X[:, self.retained_features_]
+        n_features = X_sample.shape[1]
+        X_pollute = self._pollute_data(X_sample)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_pollute,
+            y,
+            test_size=(1 - self.subsample_ratio),
+            stratify=y,
+            shuffle=True,
+        )
+        train_score, test_score = self._fit_predict_score(
+            X_train, X_test, y_train, y_test
+        )
+        if test_score >= self.threshold:
+            pollute_shape = self._get_pollute_shape()
+            importances = self.model.feature_importances_
+            mask = self._create_mask_from_pollution(
+                n_features, pollute_shape, importances
+            )
+            return mask, train_score, test_score
+        else:
+            if self.verbose:
+                print(
+                    f"Did not meet tests threshold: {self.metric}>{self.threshold}"
+                )
+            return None, train_score, test_score
 
     def transform(self, X):
         """Return the dataset with the selected features
@@ -397,15 +410,9 @@ class PollutionSelect:
 
 
 if __name__ == "__main__":
-    iris = load_iris()
-    X = iris.data
-    y = iris.target
-    X_noise = np.concatenate(
-        (np.random.rand(150, 1), X, np.random.rand(150, 1)), axis=1
+    X, y = make_classification(
+        n_samples=10000, n_features=20, n_informative=10, n_redundant=5
     )
-
-    def acc(y, preds):
-        return np.mean(y == preds)
 
     model = RandomForestClassifier()
     selector = PollutionSelect(
@@ -418,8 +425,10 @@ if __name__ == "__main__":
         min_features=4,
     )
 
-    X_dropped = selector.fit_transform(X_noise, y)
+    import time
+    start = time.time()
+    X_dropped = selector.fit_transform(X, y)
+    end = time.time()
+    print(end - start)
     print(selector.feature_importances_)
 
-    selector.plot_test_scores_by_iters()
-    selector.plot_test_scores_by_n_features()
