@@ -104,14 +104,14 @@ class PollutionSelect:
     """
 
     def __init__(
-            self,
-            model,
-            performance_function,
-            performance_threshold,
-            n_iter=100,
-            subsample_ratio=0.5,
-            pollute_type="random_k",
-            pollute_k=1,
+        self,
+        model,
+        performance_function,
+        performance_threshold,
+        n_iter=100,
+        subsample_ratio=0.5,
+        pollute_type="random_k",
+        pollute_k=1,
         additional_pollution=True,
         drop_features=False,
         min_features=None,
