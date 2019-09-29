@@ -397,15 +397,14 @@ class PollutionSelect:
 
 
 if __name__ == "__main__":
-    iris = load_iris()
-    X = iris.data
-    y = iris.target
-    X_noise = np.concatenate(
-        (np.random.rand(150, 1), X, np.random.rand(150, 1)), axis=1
-    )
 
     def acc(y, preds):
         return np.mean(y == preds)
+
+    from sklearn.datasets import make_classification
+    X, y = make_classification(
+        n_samples=10000, n_features=20, n_informative=10, n_redundant=5
+    )
 
     model = RandomForestClassifier()
     selector = PollutionSelect(
@@ -415,11 +414,11 @@ if __name__ == "__main__":
         drop_features=False,
         performance_threshold=0.7,
         performance_function=acc,
-        min_features=4,
     )
 
-    X_dropped = selector.fit_transform(X_noise, y)
-    print(selector.feature_importances_)
+    import time
+    start = time.time()
+    X_dropped = selector.fit_transform(X, y)
+    end = time.time()
+    print(end - start)
 
-    selector.plot_test_scores_by_iters()
-    selector.plot_test_scores_by_n_features()
