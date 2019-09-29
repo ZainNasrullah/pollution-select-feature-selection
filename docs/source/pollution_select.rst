@@ -1,22 +1,7 @@
-pollution\_select package
-=========================
+API Reference
+=============
 
-Submodules
-----------
-
-pollution\_select.pollution\_select module
-------------------------------------------
+Documentation for Pollution-Select.
 
 .. automodule:: pollution_select.pollution_select
    :members:
-   :undoc-members:
-   :show-inheritance:
-
-
-Module contents
----------------
-
-.. automodule:: pollution_select
-   :members:
-   :undoc-members:
-   :show-inheritance:

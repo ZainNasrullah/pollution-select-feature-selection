@@ -35,7 +35,7 @@
   <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="README" href="readme.html" /> 
+    <link rel="next" title="API Reference" href="pollution_select.html" /> 
 </head>
 
 <body class="wy-body-for-nav">
@@ -81,8 +81,7 @@
             
               <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="readme.html">README</a></li>
-<li class="toctree-l1"><a class="reference internal" href="modules.html">pollution_select</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pollution_select.html">API Reference</a></li>
 </ul>
 
             
@@ -149,21 +148,98 @@
             
   <div class="section" id="welcome-to-pollution-select-s-documentation">
 <h1>Welcome to Pollution-Select’s documentation!<a class="headerlink" href="#welcome-to-pollution-select-s-documentation" title="Permalink to this headline">¶</a></h1>
+<p>Pollution-Select is a feature selection algorithm method based on ideas from
+boruta and other iterative selection methods. It finds features that consistently achieve
+a desired performance criteria and are more important than random noise in
+monte carlo cross-validation.</p>
+<div class="section" id="algorithm">
+<h2>Algorithm<a class="headerlink" href="#algorithm" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><p>As input, Pollution-Select receives a model, a performance evaluation function and a threshold.</p></li>
+<li><p>For n_iters:</p>
+<ul>
+<li><p>Generate k+2 polluted features by permuting k random features and creating two noisy features</p></li>
+<li><p>Train the model on a polluted training set with d + k + 2 features and checks that the desired performance threshold is met on the test set (else skip iteration)</p></li>
+<li><p>Compare the importance of each original feature to every polluted feature. Assigns each feature a score of 1 for the iteration if its importance is greater than every noisy feature</p></li>
+<li><p>Update the overall importance of each feature as cumulative_score / n_iterations</p></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="install">
+<h2>Install<a class="headerlink" href="#install" title="Permalink to this headline">¶</a></h2>
+<p>The simplest way to install right now is to clone this repo and then do a local install:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">git clone https://github.com/ZainNasrullah/feature-selection-experiments.git</span>
+<span class="go">cd feature-selection-experiments</span>
+<span class="go">pip install .</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="quick-start">
+<h2>Quick Start<a class="headerlink" href="#quick-start" title="Permalink to this headline">¶</a></h2>
+<p>Simple example without dropping any features:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">sklearn.datasets</span> <span class="kn">import</span> <span class="n">load_iris</span>
+<span class="kn">from</span> <span class="nn">sklearn.ensemble</span> <span class="kn">import</span> <span class="n">RandomForestClassifier</span>
+<span class="kn">from</span> <span class="nn">pollution_select</span> <span class="kn">import</span> <span class="n">PollutionSelect</span>
+
+<span class="n">iris</span> <span class="o">=</span> <span class="n">load_iris</span><span class="p">()</span>
+<span class="n">X</span> <span class="o">=</span> <span class="n">iris</span><span class="o">.</span><span class="n">data</span>
+<span class="n">y</span> <span class="o">=</span> <span class="n">iris</span><span class="o">.</span><span class="n">target</span>
+<span class="n">X_noise</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
+    <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">150</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">X</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">150</span><span class="p">,</span> <span class="mi">1</span><span class="p">)),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span>
+<span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">acc</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">preds</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">y</span> <span class="o">==</span> <span class="n">preds</span><span class="p">)</span>
+
+<span class="n">selector</span> <span class="o">=</span> <span class="n">PollutionSelect</span><span class="p">(</span>
+    <span class="n">RandomForestClassifier</span><span class="p">(),</span>
+    <span class="n">performance_function</span><span class="o">=</span><span class="n">acc</span><span class="p">,</span>
+    <span class="n">performance_threshold</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">selector</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">X_noise</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">selector</span><span class="o">.</span><span class="n">feature_importances_</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>More complex example with feature dropping:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">sklearn.datasets</span> <span class="kn">import</span> <span class="n">load_iris</span>
+<span class="kn">from</span> <span class="nn">sklearn.ensemble</span> <span class="kn">import</span> <span class="n">RandomForestClassifier</span>
+<span class="kn">from</span> <span class="nn">pollution_select</span> <span class="kn">import</span> <span class="n">PollutionSelect</span>
+
+<span class="n">X</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">make_classification</span><span class="p">(</span>
+    <span class="n">n_samples</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">n_features</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">n_informative</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">n_redundant</span><span class="o">=</span><span class="mi">5</span>
+<span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">acc</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">preds</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">y</span> <span class="o">==</span> <span class="n">preds</span><span class="p">)</span>
+
+<span class="n">selector</span> <span class="o">=</span> <span class="n">PollutionSelect</span><span class="p">(</span>
+    <span class="n">RandomForestClassifier</span><span class="p">(),</span>
+    <span class="n">n_iter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="n">pollute_type</span><span class="o">=</span><span class="s2">&quot;random_k&quot;</span><span class="p">,</span>
+    <span class="n">drop_features</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+    <span class="n">performance_threshold</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span>
+    <span class="n">performance_function</span><span class="o">=</span><span class="n">acc</span><span class="p">,</span>
+    <span class="n">min_features</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="n">selector</span><span class="o">.</span><span class="n">retained_features_</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">selector</span><span class="o">.</span><span class="n">dropped_features_</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">selector</span><span class="o">.</span><span class="n">feature_importances_</span><span class="p">)</span>
+
+<span class="n">selector</span><span class="o">.</span><span class="n">plot_test_scores_by_iters</span><span class="p">()</span>
+<span class="n">selector</span><span class="o">.</span><span class="n">plot_test_scores_by_n_features</span><span class="p">()</span>
+</pre></div>
+</div>
 <div class="toctree-wrapper compound">
 <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="readme.html">README</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="readme.html#background">Background</a></li>
-<li class="toctree-l2"><a class="reference internal" href="readme.html#algorithm">Algorithm</a></li>
-<li class="toctree-l2"><a class="reference internal" href="readme.html#install">Install</a></li>
-<li class="toctree-l2"><a class="reference internal" href="readme.html#quick-start">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pollution_select.html">API Reference</a></li>
 </ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="modules.html">pollution_select</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="pollution_select.html">pollution_select package</a></li>
-</ul>
-</li>
-</ul>
+</div>
 </div>
 </div>
 <div class="section" id="indices-and-tables">
@@ -183,7 +259,7 @@
   
     <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
       
-        <a href="readme.html" class="btn btn-neutral float-right" title="README" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+        <a href="pollution_select.html" class="btn btn-neutral float-right" title="API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
       
       
     </div>
