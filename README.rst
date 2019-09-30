@@ -71,7 +71,7 @@ More complex example with feature dropping:
 .. code-block:: python
 
    import numpy as np
-   from sklearn.datasets import load_iris
+   from sklearn.datasets import make_classification
    from sklearn.ensemble import RandomForestClassifier
    from pollution_select import PollutionSelect
 
