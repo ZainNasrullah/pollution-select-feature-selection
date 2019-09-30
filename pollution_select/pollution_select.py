@@ -190,7 +190,10 @@ class PollutionSelect:
         for iter_idx in range(self.n_iter):
             X_sample = X[:, self.retained_features_]
             n_features = X_sample.shape[1]
-            X_pollute = self._pollute_data(X_sample)
+
+            X_pollute = self._pollute_data(
+                X_sample, self.pollute_type, self.pollute_k, self._additional_pollute_k
+            )
 
             X_train, X_test, y_train, y_test = train_test_split(
                 X_pollute,
@@ -347,28 +350,33 @@ class PollutionSelect:
         test_score = self.metric(y_test, test_preds)
         return train_score, test_score
 
-    def _pollute_data(self, X):
+    @staticmethod
+    @njit
+    def _pollute_data(X, pollute_type, pollute_k, additional_pollute_k):
         """Create polluted feature representation (adds noisy features)"""
 
         n_samples, n_features = X.shape
 
-        if self.pollute_type == "all":
+        if pollute_type == "all":
             pollute_shape = X.shape[1]
-        elif self.pollute_type == "random_k":
-            pollute_shape = self.pollute_k
+        elif pollute_type == "random_k":
+            pollute_shape = pollute_k
         else:
             raise Exception("pollute type not in ('all', 'random_k')")
 
-        pollute_shape += self._additional_pollute_k
+        pollute_shape += additional_pollute_k
         X_pollute = np.zeros(shape=(n_samples, pollute_shape))
-        random_feats = np.random.choice(
-            n_features, pollute_shape - self._additional_pollute_k, replace=None
-        )
+        random_feats = np.arange(n_features)
+        random_feats = np.random.permutation(random_feats)[
+            0 : pollute_shape - additional_pollute_k
+        ]
 
+        # add permuted features
         for i, feat_idx in enumerate(random_feats):
             X_pollute[:, i] = np.random.permutation(X[:, feat_idx])
 
-        if self.additional_pollution:
+        # add random noise
+        if additional_pollute_k == 2:
             X_pollute[:, i + 1] = np.random.randint(0, 2, n_samples)
             X_pollute[:, i + 2] = np.random.rand(n_samples)
 
@@ -402,6 +410,7 @@ if __name__ == "__main__":
         return np.mean(y == preds)
 
     from sklearn.datasets import make_classification
+
     X, y = make_classification(
         n_samples=10000, n_features=20, n_informative=10, n_redundant=5
     )
@@ -417,9 +426,9 @@ if __name__ == "__main__":
     )
 
     import time
+
     start = time.time()
     X_dropped = selector.fit_transform(X, y)
     end = time.time()
     print(end - start)
     print(selector.feature_importances_)
-
