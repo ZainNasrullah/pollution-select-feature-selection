@@ -1,14 +1,16 @@
-from sklearn.datasets import load_iris
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.exceptions import NotFittedError
+# Authors: Zain Nasrullah <zain.nasrullah.zn@gmail.com>
+#
+#
+# License: MIT
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import warnings
+
+from sklearn.model_selection import train_test_split
+from sklearn.exceptions import NotFittedError
 from numba import njit, prange
-import seaborn as sns
 
 
 class PollutionSelect:
@@ -209,9 +211,8 @@ class PollutionSelect:
 
             if test_score >= self.threshold:
                 pollute_shape = self._get_pollute_shape()
-                importances = self.model.feature_importances_
                 mask = self._create_mask_from_pollution(
-                    n_features, pollute_shape, importances
+                    n_features, pollute_shape, self.model.feature_importances_
                 )
                 mask_array[self.retained_features_] += mask
                 self.successes_ += 1
@@ -406,10 +407,11 @@ class PollutionSelect:
 
 if __name__ == "__main__":
 
+    from sklearn.datasets import make_classification
+    from sklearn.ensemble import RandomForestClassifier
+
     def acc(y, preds):
         return np.mean(y == preds)
-
-    from sklearn.datasets import make_classification
 
     X, y = make_classification(
         n_samples=10000, n_features=20, n_informative=10, n_redundant=5
