@@ -62,7 +62,7 @@ Simple example without dropping any features:
        performance_threshold=0.7,
    )
 
-   selector.fit_transform(X_noise, y)
+   X_transform = selector.fit_transform(X_noise, y)
    print(selector.feature_importances_)
 
 
@@ -71,7 +71,7 @@ More complex example with feature dropping:
 .. code-block:: python
 
    import numpy as np
-   from sklearn.datasets import load_iris
+   from sklearn.datasets import make_classification
    from sklearn.ensemble import RandomForestClassifier
    from pollution_select import PollutionSelect
 
@@ -91,7 +91,9 @@ More complex example with feature dropping:
        performance_function=acc,
        min_features=4,
    )
-
+   
+   selector.fit(X, y)
+   
    print(selector.retained_features_)
    print(selector.dropped_features_)
    print(selector.feature_importances_)
