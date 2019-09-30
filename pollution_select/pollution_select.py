@@ -193,36 +193,38 @@ class PollutionSelect:
             raise ValueError("Pollute k must be less than or equal # of features")
 
         num_workers = mp.cpu_count()
-        pool = mp.Pool(num_workers)
-
+        q = mp.Queue()
         results = []
         for iter_idx in range(self.n_iter):
-            results.append(pool.apply_async(self._find_pollute_mask, args=(X, y)))
-        pool.close()
-        pool.join()
+            if iter_idx % 5 == 0:
+                jobs = [
+                    mp.Process(target=self._find_pollute_mask, args=(q, X, y))
+                    for _ in range(num_workers)
+                ]
+                for job in jobs:
+                    job.start()
+                for job in jobs:
+                    results.append(q.get())
+                for job in jobs:
+                    job.join()
 
-        results = [result.get() for result in results]
-        masks, train_scores, test_scores = list(zip(*results))
+                masks, train_scores, test_scores = list(zip(*results))
 
-        successes = [m for m in masks if m is not None]
-        self.successes_ += len(successes)
-        self.failures_ += len([m for m in masks if m is None])
-        mask_array += np.sum(successes, axis=0)
+                successes = [m for m in masks if m is not None]
+                self.successes_ += len(successes)
+                self.failures_ += len([m for m in masks if m is None])
+                mask_array += np.sum(successes, axis=0)
 
-        self.feature_importances_ = mask_array / self.successes_
+                self.feature_importances_ = mask_array / self.successes_
 
         return self
 
-    def _find_pollute_mask(self, X, y):
+    def _find_pollute_mask(self, q, X, y):
         X_sample = X[:, self.retained_features_]
         n_features = X_sample.shape[1]
         X_pollute = self._pollute_data(X_sample)
         X_train, X_test, y_train, y_test = train_test_split(
-            X_pollute,
-            y,
-            test_size=(1 - self.subsample_ratio),
-            stratify=y,
-            shuffle=True,
+            X_pollute, y, test_size=(1 - self.subsample_ratio), stratify=y, shuffle=True
         )
         train_score, test_score = self._fit_predict_score(
             X_train, X_test, y_train, y_test
@@ -233,13 +235,11 @@ class PollutionSelect:
             mask = self._create_mask_from_pollution(
                 n_features, pollute_shape, importances
             )
-            return mask, train_score, test_score
+            q.put((mask, train_score, test_score))
         else:
             if self.verbose:
-                print(
-                    f"Did not meet tests threshold: {self.metric}>{self.threshold}"
-                )
-            return None, train_score, test_score
+                print(f"Did not meet tests threshold: {self.metric}>{self.threshold}")
+            q.put((None, train_score, test_score))
 
     def transform(self, X):
         """Return the dataset with the selected features
@@ -431,4 +431,3 @@ if __name__ == "__main__":
     end = time.time()
     print(end - start)
     print(selector.feature_importances_)
-
