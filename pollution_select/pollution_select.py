@@ -11,6 +11,8 @@ import warnings
 from sklearn.model_selection import train_test_split
 from sklearn.exceptions import NotFittedError
 from numba import njit, prange
+from typing import List, Union, Tuple, Optional, Callable
+import collections.abc
 
 
 class PollutionSelect:
@@ -108,20 +110,20 @@ class PollutionSelect:
     def __init__(
         self,
         model,
-        performance_function,
-        performance_threshold,
-        n_iter=100,
-        subsample_ratio=0.5,
-        pollute_type="random_k",
-        pollute_k=1,
-        additional_pollution=True,
-        drop_features=False,
-        min_features=None,
-        drop_every_n_iters=5,
-        use_predict_proba=False,
-        feature_names=None,
-        verbose=False,
-    ):
+        performance_function: Callable[[np.ndarray, np.ndarray], float],
+        performance_threshold: float,
+        n_iter: int = 100,
+        subsample_ratio: float = 0.5,
+        pollute_type: str = "random_k",
+        pollute_k: int = 1,
+        additional_pollution: bool = True,
+        drop_features: bool = False,
+        min_features: Optional[int] = None,
+        drop_every_n_iters: int = 5,
+        use_predict_proba: bool = False,
+        feature_names: Optional[List[str]] = None,
+        verbose: bool = False,
+    ) -> None:
         self.model = model
         self.metric = performance_function
         self.threshold = performance_threshold
@@ -137,12 +139,17 @@ class PollutionSelect:
         self.verbose = verbose
 
         if feature_names:
-            if type(feature_names) != list:
+            if not isinstance(feature_names, collections.abc.Sequence) or isinstance(
+                feature_names, str
+            ):
                 raise TypeError("Feature names is not a list.")
+
             self._name_mapping = {idx: name for idx, name in enumerate(feature_names)}
 
-        if pollute_type and type(pollute_k) != int:
-            raise TypeError("Pollute k must be an integer.")
+        if pollute_type == "random_k" and (
+            not isinstance(pollute_k, int) or pollute_k <= 0
+        ):
+            raise TypeError("Pollute k must be a positive integer greater than 0.")
 
         if not drop_features:
             if min_features:
@@ -166,7 +173,14 @@ class PollutionSelect:
         if not hasattr(model, "predict"):
             raise TypeError("Model does not have a predict() method")
 
-    def fit(self, X, y):
+        if n_iter <= 0:
+            raise ValueError(
+                "Number of iterations cannot be less than or equal to zero."
+            )
+        elif n_iter <= 10:
+            warnings.warn("Less than 10 iters doesn't give good importance scores.")
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> None:
         """Find consistently useful features
 
         Parameters
@@ -182,17 +196,30 @@ class PollutionSelect:
         self : object
 
         """
+        if not isinstance(X, np.ndarray):
+            raise TypeError("X is not a numpy array.")
 
-        self._init_fit_params(X)
+        if not isinstance(y, np.ndarray):
+            raise TypeError("y is not a numpy array.")
+
         n_features = X.shape[1]
-        mask_array = np.zeros(n_features)
+        if hasattr(self, "_name_mapping") and len(self._name_mapping) != X.shape[1]:
+            raise ValueError(
+                f"Length of feature names {len(self._name_mapping)} don't match number of features {n_features}."
+            )
+
         if self.pollute_k > n_features:
-            raise ValueError("Pollute k must be less than or equal # of features")
+            raise ValueError(
+                f"Pollute k must be less than or equal # of features {n_features}"
+            )
+        mask_array = np.zeros(n_features)
+        self._init_fit_params(X)
 
         for iter_idx in range(self.n_iter):
             X_sample = X[:, self.retained_features_]
-            n_features = X_sample.shape[1]
 
+            # number of features may change as features are dropped across iters
+            n_features = X_sample.shape[1]
             X_pollute = self._pollute_data(
                 X_sample, self.pollute_type, self.pollute_k, self._additional_pollute_k
             )
@@ -210,7 +237,7 @@ class PollutionSelect:
             )
 
             if test_score >= self.threshold:
-                pollute_shape = self._get_pollute_shape()
+                pollute_shape = self._get_pollute_count()
                 mask = self._create_mask_from_pollution(
                     n_features, pollute_shape, self.model.feature_importances_
                 )
@@ -232,7 +259,7 @@ class PollutionSelect:
 
         return self
 
-    def transform(self, X):
+    def transform(self, X: np.ndarray) -> np.ndarray:
         """Return the dataset with the selected features
 
         Parameters
@@ -250,9 +277,19 @@ class PollutionSelect:
             raise NotFittedError(
                 "Selector has not been fit or retained feature list is empty."
             )
+
+        if not isinstance(X, np.ndarray):
+            raise TypeError("X is not a numpy array.")
+
+        if X.shape[1] != self.X_orig.shape[1]:
+            raise ValueError(
+                f"n_features do not match original data.\n"
+                f"X: {X.shape[1]} != X_orig {self.X_orig.shape[1]}"
+            )
+
         return X[:, self.retained_features_]
 
-    def fit_transform(self, X, y):
+    def fit_transform(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
         """
 
         Parameters
@@ -271,14 +308,16 @@ class PollutionSelect:
         self.fit(X, y)
         return self.transform(X)
 
-    def _record_iter(self, iter_idx, train_score, test_score):
+    def _record_iter(
+        self, iter_idx: int, train_score: float, test_score: float
+    ) -> None:
         """Track scores, features and importances at each iteration in the object"""
         self.train_scores_[iter_idx] = train_score
         self.test_scores_[iter_idx] = test_score
         self._features_at_iter.append(self.retained_features_.copy())
         self._importances_at_iter[iter_idx, :] = self.feature_importances_
 
-    def _init_fit_params(self, X_sample):
+    def _init_fit_params(self, X_sample: np.ndarray) -> None:
         """Initialize model attributes defined during predict"""
         self.X_orig = X_sample
         n_features = X_sample.shape[1]
@@ -292,7 +331,7 @@ class PollutionSelect:
         self._features_at_iter = list()
         self._importances_at_iter = np.zeros(shape=(self.n_iter, n_features))
 
-    def _eval_dropping_conditions(self, iter_idx):
+    def _eval_dropping_conditions(self, iter_idx: int) -> None:
         """Evaluate conditions for dropping features and drop the min importance"""
         dropping_condition = (
             iter_idx >= self._drop_start_iter
@@ -315,7 +354,9 @@ class PollutionSelect:
 
     @staticmethod
     @njit(parallel=True)
-    def _create_mask_from_pollution(n_features, pollute_shape, importances):
+    def _create_mask_from_pollution(
+        n_features: int, pollute_shape: int, importances: np.ndarray
+    ) -> np.ndarray:
         """Create mask by comparing original feature importances to polluted features"""
         pollute_idx = np.arange(n_features, n_features + pollute_shape)
 
@@ -325,7 +366,7 @@ class PollutionSelect:
 
         return mask
 
-    def _get_pollute_shape(self):
+    def _get_pollute_count(self) -> int:
         """Create pollution shape"""
         pollute_shape = (
             self.pollute_k + self._additional_pollute_k
@@ -334,7 +375,13 @@ class PollutionSelect:
         )
         return pollute_shape
 
-    def _fit_predict_score(self, X_train, X_test, y_train, y_test):
+    def _fit_predict_score(
+        self,
+        X_train: np.ndarray,
+        X_test: np.ndarray,
+        y_train: np.ndarray,
+        y_test: np.ndarray,
+    ) -> Tuple[float, float]:
         """fit and predict model, returning scores on defined metric"""
         self.model.fit(X_train, y_train)
         if not hasattr(self.model, "feature_importances_"):
@@ -353,7 +400,9 @@ class PollutionSelect:
 
     @staticmethod
     @njit
-    def _pollute_data(X, pollute_type, pollute_k, additional_pollute_k):
+    def _pollute_data(
+        X: np.ndarray, pollute_type: str, pollute_k: int, additional_pollute_k: int
+    ) -> np.ndarray:
         """Create polluted feature representation (adds noisy features)"""
 
         n_samples, n_features = X.shape
@@ -383,7 +432,7 @@ class PollutionSelect:
 
         return np.concatenate((X, X_pollute), axis=1)
 
-    def plot_test_scores_by_iters(self):
+    def plot_test_scores_by_iters(self) -> None:
         """Plot tests scores against feature importances"""
         if not hasattr(self, "feature_importances_"):
             raise NotFittedError("Model has not been fit yet.")
@@ -392,7 +441,7 @@ class PollutionSelect:
         plt.title("Test scores (average across k-folds) by iterations.")
         plt.show()
 
-    def plot_test_scores_by_n_features(self):
+    def plot_test_scores_by_n_features(self) -> None:
         """Plot tests scores against n_features"""
         if not hasattr(self, "feature_importances_"):
             raise NotFittedError("Model has not been fit yet.")
