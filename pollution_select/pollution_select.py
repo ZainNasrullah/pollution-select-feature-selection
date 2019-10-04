@@ -13,6 +13,8 @@ from sklearn.exceptions import NotFittedError
 from numba import njit, prange
 from typing import List, Union, Tuple, Optional, Callable
 import collections.abc
+from sklearn.utils import shuffle
+import inspect
 
 
 class PollutionSelect:
@@ -36,7 +38,7 @@ class PollutionSelect:
         Number of iterations to run the feature selection for. Larger values
         will result in more accurate estimates of importances.
 
-    subsample_ratio : float, optional (default=0.5)
+    data_subsample_ratio : float, optional (default=0.5)
         Ratio to subsample the dataset at each iteration for computational reasons.
         Also introduces some randomness in the process.
 
@@ -113,12 +115,13 @@ class PollutionSelect:
         performance_function: Callable[[np.ndarray, np.ndarray], float],
         performance_threshold: float,
         n_iter: int = 100,
-        subsample_ratio: float = 0.5,
+        data_subsample_ratio: float = 0.5,
         pollute_type: str = "random_k",
         pollute_k: int = 1,
         additional_pollution: bool = True,
+        mask_type: str = "binary",
         drop_features: bool = False,
-        min_features: Optional[int] = None,
+        min_features: int = 1,
         drop_every_n_iters: int = 5,
         use_predict_proba: bool = False,
         feature_names: Optional[List[str]] = None,
@@ -128,16 +131,84 @@ class PollutionSelect:
         self.metric = performance_function
         self.threshold = performance_threshold
         self.n_iter = n_iter
-        self.subsample_ratio = subsample_ratio
+        self.data_subsample_ratio = data_subsample_ratio
         self.pollute_type = pollute_type
         self.pollute_k = pollute_k
         self.additional_pollution = additional_pollution
+        self.mask_type = mask_type
         self.drop_features = drop_features
         self.min_features = min_features
         self.drop_every_n_iters = drop_every_n_iters
         self.use_predict_proba = use_predict_proba
         self.verbose = verbose
 
+        # check model
+        if not hasattr(self.model, "fit"):
+            raise TypeError("Model does not have a fit() method")
+        if not hasattr(self.model, "predict"):
+            raise TypeError("Model does not have a predict() method")
+
+        # check metric
+        if not len(inspect.signature(self.metric).parameters) == 2:
+            raise TypeError(
+                "metric should only take in two parameters,"
+                " e.g., acc(y_true, y_preds)"
+            )
+
+        # check threshold
+        if not isinstance(self.threshold, (int, float)):
+            raise TypeError("self.threshold is not an int or float")
+
+        # check iters
+        if n_iter <= 0:
+            raise ValueError(
+                "Number of iterations cannot be less than or equal to zero."
+            )
+        elif n_iter <= 10:
+            warnings.warn("Less than 10 iters doesn't give good importance scores.")
+
+        # check data subsample
+        if not (0 < self.data_subsample_ratio < 1):
+            raise ValueError("Data subsample should be greater than 0 and less than 1.")
+
+        # check pollute type and k
+        if pollute_type not in ["random_k", "all"]:
+            raise ValueError("Pollution type should be 'random_k' or 'all'")
+        if pollute_type == "random_k" and (
+            not isinstance(pollute_k, int) or pollute_k <= 0
+        ):
+            raise TypeError("Pollute k must be a positive integer greater than 0.")
+
+        # check additional pollution
+        if not isinstance(self.additional_pollution, bool):
+            raise TypeError("Additional pollution is not a boolean.")
+
+        # check mask type
+        if mask_type not in ["binary", "weighted"]:
+            raise ValueError("Mask type should be 'binary' or 'weighted'")
+
+        # check feature dropping
+        if not isinstance(self.drop_features, bool):
+            raise TypeError("drop features is not a boolean.")
+
+        if drop_features:
+            if self.min_features == 1:
+                warnings.warn(
+                    "Minimum number of features is set to 1 "
+                    "and this can lead to almost every feature being dropped."
+                    " Please modify this value for the desired behavior."
+                )
+            if not isinstance(self.min_features, int) and self.min_features < 1:
+                raise TypeError("min features is not a positive integer.")
+
+            if not isinstance(drop_every_n_iters, int) and self.min_features < 1:
+                raise TypeError("drop_every_n_iters is not a positive integer.")
+
+        # check predict proba
+        if not isinstance(self.use_predict_proba, bool):
+            raise TypeError("use_predict_proba is not a boolean.")
+
+        # check feature names
         if feature_names:
             if not isinstance(feature_names, collections.abc.Sequence) or isinstance(
                 feature_names, str
@@ -146,39 +217,13 @@ class PollutionSelect:
 
             self._name_mapping = {idx: name for idx, name in enumerate(feature_names)}
 
-        if pollute_type == "random_k" and (
-            not isinstance(pollute_k, int) or pollute_k <= 0
-        ):
-            raise TypeError("Pollute k must be a positive integer greater than 0.")
-
-        if not drop_features:
-            if min_features:
-                warnings.warn(
-                    "Min features specified but drop_features is false. Ignoring."
-                )
-            if drop_every_n_iters != 5:
-                warnings.warn(
-                    "drop_every_n_iters modified but drop_features is false. Ignoring."
-                )
-        else:
-            if not min_features:
-                raise TypeError("Min features not defined for drop_features.")
+        # check verbosity
+        if not isinstance(self.verbose, bool):
+            raise TypeError("verbose is not a boolean.")
 
         # parameters set using intuition
         self._additional_pollute_k = 2 if self.additional_pollution else 0
         self._drop_start_iter = 5
-
-        if not hasattr(model, "fit"):
-            raise TypeError("Model does not have a fit() method")
-        if not hasattr(model, "predict"):
-            raise TypeError("Model does not have a predict() method")
-
-        if n_iter <= 0:
-            raise ValueError(
-                "Number of iterations cannot be less than or equal to zero."
-            )
-        elif n_iter <= 10:
-            warnings.warn("Less than 10 iters doesn't give good importance scores.")
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> None:
         """Find consistently useful features
@@ -227,7 +272,7 @@ class PollutionSelect:
             X_train, X_test, y_train, y_test = train_test_split(
                 X_pollute,
                 y,
-                test_size=(1 - self.subsample_ratio),
+                test_size=(1 - self.data_subsample_ratio),
                 stratify=y,
                 shuffle=True,
             )
@@ -239,7 +284,9 @@ class PollutionSelect:
             if test_score >= self.threshold:
                 pollute_shape = self._get_pollute_count()
                 mask = self._create_mask_from_pollution(
-                    n_features, pollute_shape, self.model.feature_importances_
+                    n_features=n_features,
+                    pollute_shape=pollute_shape,
+                    importances=self.model.feature_importances_,
                 )
                 mask_array[self.retained_features_] += mask
                 self.successes_ += 1
@@ -352,19 +399,49 @@ class PollutionSelect:
                     )
             self.dropped_features_.append(self.retained_features_.pop(min_feature))
 
+    def _create_mask_from_pollution(self, **kwargs) -> np.ndarray:
+
+        if self.mask_type == "binary":
+            mask = self._create_binary_mask_from_pollution(**kwargs)
+        elif self.mask_type == "weighted":
+            mask = self._create_weighted_mask_from_pollution(**kwargs)
+        else:
+            mask = None
+
+        return mask
+
     @staticmethod
-    @njit(parallel=True)
-    def _create_mask_from_pollution(
+    def _create_binary_mask_from_pollution(
         n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
         """Create mask by comparing original feature importances to polluted features"""
         pollute_idx = np.arange(n_features, n_features + pollute_shape)
 
         mask = np.zeros(n_features)
-        for i in prange(n_features):
+        for i in range(n_features):
             mask[i] = np.all(importances[i] > importances[pollute_idx])
 
         return mask
+
+    @staticmethod
+    def _create_weighted_mask_from_pollution(
+        n_features: int, pollute_shape: int, importances: np.ndarray
+    ) -> np.ndarray:
+        """Create mask by comparing original feature importances to polluted features"""
+        pollute_idx = np.arange(n_features, n_features + pollute_shape)
+
+        mask = np.zeros(n_features)
+        deltas = np.zeros(n_features)
+        for i in range(n_features):
+            mask[i] = np.all(importances[i] > importances[pollute_idx])
+            deltas[i] = importances[i] - np.mean(importances[pollute_idx])
+
+        weighted_mask = mask * deltas
+        max_element = np.max(weighted_mask)
+        min_element = np.min(weighted_mask)
+        weighted_mask = (weighted_mask - min_element) / (max_element - min_element)
+
+        return weighted_mask
 
     def _get_pollute_count(self) -> int:
         """Create pollution shape"""
@@ -396,6 +473,13 @@ class PollutionSelect:
 
         train_score = self.metric(y_train, train_preds)
         test_score = self.metric(y_test, test_preds)
+
+        if not isinstance(train_score, (int, float)):
+            raise TypeError("self.metric did not return an integer or float")
+
+        if not isinstance(test_score, (int, float)):
+            raise TypeError("self.metric did not return an integer or float")
+
         return train_score, test_score
 
     @staticmethod
@@ -458,15 +542,19 @@ if __name__ == "__main__":
 
     from sklearn.datasets import make_classification
     from sklearn.ensemble import RandomForestClassifier
+    import time
 
     def acc(y, preds):
         return np.mean(y == preds)
 
     X, y = make_classification(
-        n_samples=10000, n_features=20, n_informative=10, n_redundant=5
+        n_samples=1000, n_features=15, n_informative=5, n_redundant=5, shuffle=False
     )
+    X, y = shuffle(X, y)
 
     model = RandomForestClassifier()
+
+    print("Binary Mask:")
     selector = PollutionSelect(
         model,
         n_iter=100,
@@ -474,12 +562,32 @@ if __name__ == "__main__":
         drop_features=False,
         performance_threshold=0.7,
         performance_function=acc,
+        mask_type='binary'
     )
-
-    import time
 
     start = time.time()
     X_dropped = selector.fit_transform(X, y)
     end = time.time()
     print(end - start)
-    print(selector.feature_importances_)
+    print("Relevant:", selector.feature_importances_[:5])
+    print("Redundant:", selector.feature_importances_[5:10])
+    print("Noise:", selector.feature_importances_[10:])
+
+    print("\n\nWeighted Mask:")
+    selector = PollutionSelect(
+        model,
+        n_iter=100,
+        pollute_type="random_k",
+        drop_features=False,
+        performance_threshold=0.7,
+        performance_function=acc,
+        mask_type='weighted'
+    )
+
+    start = time.time()
+    X_dropped = selector.fit_transform(X, y)
+    end = time.time()
+    print(end - start)
+    print("Relevant:", selector.feature_importances_[:5])
+    print("Redundant:", selector.feature_importances_[5:10])
+    print("Noise:", selector.feature_importances_[10:])
