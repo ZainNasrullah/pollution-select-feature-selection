@@ -184,7 +184,7 @@ class PollutionSelect:
             raise TypeError("Additional pollution is not a boolean.")
 
         # check mask type
-        if mask_type not in ["binary", "weighted"]:
+        if mask_type not in ["binary", "delta_weighted", "negative_score"]:
             raise ValueError("Mask type should be 'binary' or 'weighted'")
 
         # check feature dropping
@@ -403,18 +403,21 @@ class PollutionSelect:
 
         if self.mask_type == "binary":
             mask = self._create_binary_mask_from_pollution(**kwargs)
-        elif self.mask_type == "weighted":
+        elif self.mask_type == "delta_weighted":
             mask = self._create_weighted_mask_from_pollution(**kwargs)
+        elif self.mask_type == "negative_score":
+            mask = self._create_negative_weight_mask_from_pollution(**kwargs)
         else:
             mask = None
 
         return mask
 
-    @staticmethod
     def _create_binary_mask_from_pollution(
-        n_features: int, pollute_shape: int, importances: np.ndarray
+        self, n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
-        """Create mask by comparing original feature importances to polluted features"""
+        """Create binary mask by comparing original feature importances
+         to polluted features and scoring 1 only if feature is more
+         important than every noisy feature."""
         pollute_idx = np.arange(n_features, n_features + pollute_shape)
 
         mask = np.zeros(n_features)
@@ -423,11 +426,11 @@ class PollutionSelect:
 
         return mask
 
-    @staticmethod
     def _create_weighted_mask_from_pollution(
-        n_features: int, pollute_shape: int, importances: np.ndarray
+        self, n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
-        """Create mask by comparing original feature importances to polluted features"""
+        """ Extends the binary mask by additionally weighting by differences in
+         feature importance and then normalizing into [0,1]"""
         pollute_idx = np.arange(n_features, n_features + pollute_shape)
 
         mask = np.zeros(n_features)
@@ -439,9 +442,25 @@ class PollutionSelect:
         weighted_mask = mask * deltas
         max_element = np.max(weighted_mask)
         min_element = np.min(weighted_mask)
-        weighted_mask = (weighted_mask - min_element) / (max_element - min_element)
+        weighted_mask_norm = (weighted_mask - min_element) / (max_element - min_element)
 
-        return weighted_mask
+        return weighted_mask_norm
+
+    def _create_negative_weight_mask_from_pollution(
+        self, n_features: int, pollute_shape: int, importances: np.ndarray
+    ) -> np.ndarray:
+        """ Extends the binary mask by assigning an original features which fails
+         to beat a noisy feature a negative score """
+        pollute_idx = np.arange(n_features, n_features + pollute_shape)
+        scaling = 1 / pollute_shape
+
+        mask = np.zeros(n_features)
+        for i in range(n_features):
+            feat_comparison = importances[i] > 2 * importances[pollute_idx]
+            scaled_comparison = np.where(feat_comparison, scaling, -1 * scaling)
+            mask[i] = np.sum(scaled_comparison)
+
+        return mask
 
     def _get_pollute_count(self) -> int:
         """Create pollution shape"""
@@ -562,7 +581,7 @@ if __name__ == "__main__":
         drop_features=False,
         performance_threshold=0.7,
         performance_function=acc,
-        mask_type='binary'
+        mask_type="binary",
     )
 
     start = time.time()
@@ -573,7 +592,7 @@ if __name__ == "__main__":
     print("Redundant:", selector.feature_importances_[5:10])
     print("Noise:", selector.feature_importances_[10:])
 
-    print("\n\nWeighted Mask:")
+    print("\n\nDelta Weighted Mask:")
     selector = PollutionSelect(
         model,
         n_iter=100,
@@ -581,7 +600,26 @@ if __name__ == "__main__":
         drop_features=False,
         performance_threshold=0.7,
         performance_function=acc,
-        mask_type='weighted'
+        mask_type="delta_weighted",
+    )
+
+    start = time.time()
+    X_dropped = selector.fit_transform(X, y)
+    end = time.time()
+    print(end - start)
+    print("Relevant:", selector.feature_importances_[:5])
+    print("Redundant:", selector.feature_importances_[5:10])
+    print("Noise:", selector.feature_importances_[10:])
+
+    print("\n\nNegative Score Mask:")
+    selector = PollutionSelect(
+        model,
+        n_iter=100,
+        pollute_type="random_k",
+        drop_features=False,
+        performance_threshold=0.7,
+        performance_function=acc,
+        mask_type="negative_score",
     )
 
     start = time.time()
