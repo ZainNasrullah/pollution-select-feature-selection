@@ -412,8 +412,9 @@ class PollutionSelect:
 
         return mask
 
+    @staticmethod
     def _create_binary_mask_from_pollution(
-        self, n_features: int, pollute_shape: int, importances: np.ndarray
+        n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
         """Create binary mask by comparing original feature importances
          to polluted features and scoring 1 only if feature is more
@@ -426,8 +427,9 @@ class PollutionSelect:
 
         return mask
 
+    @staticmethod
     def _create_weighted_mask_from_pollution(
-        self, n_features: int, pollute_shape: int, importances: np.ndarray
+        n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
         """ Extends the binary mask by additionally weighting by differences in
          feature importance and then normalizing into [0,1]"""
@@ -446,8 +448,9 @@ class PollutionSelect:
 
         return weighted_mask_norm
 
+    @staticmethod
     def _create_negative_weight_mask_from_pollution(
-        self, n_features: int, pollute_shape: int, importances: np.ndarray
+        n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
         """ Extends the binary mask by assigning an original features which fails
          to beat a noisy feature a negative score """
