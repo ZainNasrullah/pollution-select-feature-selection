@@ -565,6 +565,7 @@ if __name__ == "__main__":
     from sklearn.datasets import make_classification
     from sklearn.ensemble import RandomForestClassifier
     import time
+    np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
 
     def acc(y, preds):
         return np.mean(y == preds)
@@ -590,12 +591,12 @@ if __name__ == "__main__":
     start = time.time()
     X_dropped = selector.fit_transform(X, y)
     end = time.time()
-    print(end - start)
+    print("{0:.2f}s".format(end - start))
     print("Relevant:", selector.feature_importances_[:5])
     print("Redundant:", selector.feature_importances_[5:10])
     print("Noise:", selector.feature_importances_[10:])
 
-    print("\n\nDelta Weighted Mask:")
+    print("\nDelta Weighted Mask:")
     selector = PollutionSelect(
         model,
         n_iter=100,
@@ -609,12 +610,12 @@ if __name__ == "__main__":
     start = time.time()
     X_dropped = selector.fit_transform(X, y)
     end = time.time()
-    print(end - start)
+    print("{0:.2f}s".format(end - start))
     print("Relevant:", selector.feature_importances_[:5])
     print("Redundant:", selector.feature_importances_[5:10])
     print("Noise:", selector.feature_importances_[10:])
 
-    print("\n\nNegative Score Mask:")
+    print("\nNegative Score Mask:")
     selector = PollutionSelect(
         model,
         n_iter=100,
@@ -628,7 +629,7 @@ if __name__ == "__main__":
     start = time.time()
     X_dropped = selector.fit_transform(X, y)
     end = time.time()
-    print(end - start)
+    print("{0:.2f}s".format(end - start))
     print("Relevant:", selector.feature_importances_[:5])
     print("Redundant:", selector.feature_importances_[5:10])
     print("Noise:", selector.feature_importances_[10:])
