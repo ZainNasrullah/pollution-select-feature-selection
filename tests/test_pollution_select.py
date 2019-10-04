@@ -15,78 +15,21 @@ def accuracy(y: np.ndarray, preds: np.ndarray) -> float:
     return float(np.mean(y == preds))
 
 
-class TestTypeAndValueErrors(unittest.TestCase):
+class TestInterfaces(unittest.TestCase):
     def setUp(self):
-        iris = load_iris()
-        self.X = iris.data
-        self.y = iris.target
         self.model = RandomForestClassifier()
-        self.n_iter = 100
         self.threshold = 0.7
-        self.min_features = 4
-        self.X_noise = np.concatenate(
-            (np.random.rand(150, 1), self.X, np.random.rand(150, 1)), axis=1
-        )
         self.metric = accuracy
-        self.params = {
-            "model": self.model,
-            "performance_function": self.metric,
-            "performance_threshold": self.threshold,
-        }
-
-    def test_feature_names(self):
-        params = self.params.copy()
-
-        params["feature_names"] = 5
-        self.assertRaises(TypeError, PollutionSelect, **params)
-
-        params["feature_names"] = "some string"
-        self.assertRaises(TypeError, PollutionSelect, **params)
-
-        params["feature_names"] = ["feat_name"] * 4
-        selector = PollutionSelect(**params)
-        self.assertRaises(ValueError, selector.fit, *(self.X_noise, self.y))
-
-    def test_pollute_k(self):
-        params = self.params.copy()
-        params["pollute_k"] = "2"
-        self.assertRaises(TypeError, PollutionSelect, **params)
-
-        params["pollute_k"] = None
-        self.assertRaises(TypeError, PollutionSelect, **params)
-
-        params["pollute_k"] = -5
-        self.assertRaises(TypeError, PollutionSelect, **params)
-
-        params["pollute_k"] = 1000
-        selector = PollutionSelect(**params)
-        self.assertRaises(ValueError, selector.fit, *(self.X_noise, self.y))
 
     def test_interface(self):
         selector = PollutionSelect(
             self.model,
-            n_iter=self.n_iter,
-            pollute_type="random_k",
-            drop_features=True,
             performance_threshold=self.threshold,
             performance_function=self.metric,
-            min_features=self.min_features,
         )
         self.assertTrue(hasattr(selector, "fit"))
         self.assertTrue(hasattr(selector, "transform"))
         self.assertTrue(hasattr(selector, "fit_transform"))
-
-    def test_model_sklearn_interface(self):
-        params = dict(
-            model=None,
-            n_iter=self.n_iter,
-            pollute_type="random_k",
-            drop_features=True,
-            performance_threshold=self.threshold,
-            performance_function=self.metric,
-            min_features=self.min_features,
-        )
-        self.assertRaises(TypeError, PollutionSelect, **params)
 
 
 class TestOnIris(unittest.TestCase):
