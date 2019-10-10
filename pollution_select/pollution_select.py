@@ -11,6 +11,7 @@ import warnings
 from sklearn.model_selection import train_test_split
 from sklearn.exceptions import NotFittedError
 from numba import njit, prange
+import multiprocessing as mp
 from typing import List, Union, Tuple, Optional, Callable
 import collections.abc
 from sklearn.utils import shuffle
@@ -259,6 +260,11 @@ class PollutionSelect:
             )
         mask_array = np.zeros(n_features)
         self._init_fit_params(X)
+        self.parallel = True
+
+        if self.parallel:
+            num_workers = mp.cpu_count()
+            pool = mp.Pool(num_workers)
 
         for iter_idx in range(self.n_iter):
             X_sample = X[:, self.retained_features_]
@@ -269,42 +275,65 @@ class PollutionSelect:
                 X_sample, self.pollute_type, self.pollute_k, self._additional_pollute_k
             )
 
-            X_train, X_test, y_train, y_test = train_test_split(
-                X_pollute,
-                y,
-                test_size=(1 - self.data_subsample_ratio),
-                stratify=y,
-                shuffle=True,
-            )
-
-            train_score, test_score = self._fit_predict_score(
-                X_train, X_test, y_train, y_test
-            )
-
-            if test_score >= self.threshold:
-                pollute_shape = self._get_pollute_count()
-                mask = self._create_mask_from_pollution(
-                    n_features=n_features,
-                    pollute_shape=pollute_shape,
-                    importances=self.model.feature_importances_,
-                )
-                mask_array[self.retained_features_] += mask
-                self.successes_ += 1
-                self.feature_importances_[self.retained_features_] = (
-                    mask_array[self.retained_features_] / self.successes_
-                )
-            else:
-                if self.verbose:
-                    print(
-                        f"Did not meet tests threshold: {self.metric}>{self.threshold}"
+            if self.parallel:
+                train_scores = []
+                test_scores = []
+                for _ in range(self.drop_every_n_iters):
+                    mask, test_score, train_score = self._train_model(
+                        X_pollute, y, n_features
                     )
-                self.failures_ += 1
+                    train_scores.append(train_score)
+                    test_scores.append(test_score)
+            else:
+                mask, test_score, train_score = self._train_model(
+                    X_pollute, y, n_features
+                )
+                train_scores = [train_score]
+                test_scores = [test_score]
+
+            for train_score, test_score in zip(train_scores, test_scores):
+                if test_score >= self.threshold:
+                    mask_array[self.retained_features_] += mask
+                    self.successes_ += 1
+                    self.feature_importances_[self.retained_features_] = (
+                        mask_array[self.retained_features_] / self.successes_
+                    )
+                else:
+                    if self.verbose:
+                        print(
+                            f"Did not meet tests threshold: {self.metric}>{self.threshold}"
+                        )
+                    self.failures_ += 1
 
             self._record_iter(iter_idx, train_score, test_score)
             if self.drop_features:
                 self._eval_dropping_conditions(iter_idx)
 
+        if self.parallel:
+            pool.close()
+            pool.join()
+
         return self
+
+    def _train_model(self, X_pollute, y, n_features):
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_pollute,
+            y,
+            test_size=(1 - self.data_subsample_ratio),
+            stratify=y,
+            shuffle=True,
+        )
+        train_score, test_score = self._fit_predict_score(
+            X_train, X_test, y_train, y_test
+        )
+
+        pollute_shape = self._get_pollute_count()
+        mask = self._create_mask_from_pollution(
+            n_features=n_features,
+            pollute_shape=pollute_shape,
+            importances=self.model.feature_importances_,
+        )
+        return mask, test_score, train_score
 
     def transform(self, X: np.ndarray) -> np.ndarray:
         """Return the dataset with the selected features
@@ -565,7 +594,8 @@ if __name__ == "__main__":
     from sklearn.datasets import make_classification
     from sklearn.ensemble import RandomForestClassifier
     import time
-    np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
+
+    np.set_printoptions(formatter={"float": lambda x: "{0:0.3f}".format(x)})
 
     def acc(y, preds):
         return np.mean(y == preds)
