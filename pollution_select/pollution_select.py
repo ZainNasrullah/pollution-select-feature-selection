@@ -265,8 +265,11 @@ class PollutionSelect:
         if self.parallel:
             num_workers = mp.cpu_count()
             pool = mp.Pool(num_workers)
+            iters = int(self.n_iter / self.drop_every_n_iters)
+        else:
+            iters = self.n_iter
 
-        for iter_idx in range(self.n_iter):
+        for iter_idx in range(iters):
             X_sample = X[:, self.retained_features_]
 
             # number of features may change as features are dropped across iters
@@ -601,7 +604,7 @@ if __name__ == "__main__":
         return np.mean(y == preds)
 
     X, y = make_classification(
-        n_samples=1000, n_features=15, n_informative=5, n_redundant=5, shuffle=False
+        n_samples=10000, n_features=15, n_informative=5, n_redundant=5, shuffle=False
     )
     X, y = shuffle(X, y)
 
