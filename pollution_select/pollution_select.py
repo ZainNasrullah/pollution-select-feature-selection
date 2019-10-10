@@ -6,7 +6,6 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import warnings
 
 from sklearn.model_selection import train_test_split
 from sklearn.exceptions import NotFittedError
@@ -16,6 +15,9 @@ from typing import List, Union, Tuple, Optional, Callable
 import collections.abc
 from sklearn.utils import shuffle
 import inspect
+
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 class PollutionSelect:
@@ -279,22 +281,25 @@ class PollutionSelect:
             )
 
             if self.parallel:
-                train_scores = []
-                test_scores = []
+                results = []
                 for _ in range(self.drop_every_n_iters):
-                    mask, test_score, train_score = self._train_model(
-                        X_pollute, y, n_features
+                    results.append(
+                        pool.apply_async(
+                            self._train_model, args=(X_pollute, y, n_features)
+                        )
                     )
-                    train_scores.append(train_score)
-                    test_scores.append(test_score)
+
+                results = [result.get() for result in results]
+                masks, test_scores, train_scores = list(zip(*results))
             else:
                 mask, test_score, train_score = self._train_model(
                     X_pollute, y, n_features
                 )
-                train_scores = [train_score]
+                masks = [mask]
                 test_scores = [test_score]
+                train_scores = [train_score]
 
-            for train_score, test_score in zip(train_scores, test_scores):
+            for mask, train_score, test_score in zip(masks, train_scores, test_scores):
                 if test_score >= self.threshold:
                     mask_array[self.retained_features_] += mask
                     self.successes_ += 1
