@@ -343,7 +343,8 @@ class PollutionSelect:
 
         return self
 
-    def _train_model(self, X_sample, y):
+    def _train_model(self, X_sample: np.ndarray, y: np.ndarray):
+        """Utility function for pollution, training and mask generation"""
 
         # number of features may change as features are dropped across iters
         n_features = X_sample.shape[1]
@@ -362,10 +363,10 @@ class PollutionSelect:
             X_train, X_test, y_train, y_test
         )
 
-        pollute_shape = self._get_pollute_count()
+        pollute_count = self._get_pollute_count()
         mask = self._create_mask_from_pollution(
             n_features=n_features,
-            pollute_shape=pollute_shape,
+            pollute_shape=pollute_count,
             importances=self.model.feature_importances_,
         )
         return mask, test_score, train_score
@@ -569,7 +570,6 @@ class PollutionSelect:
         return train_score, test_score
 
     @staticmethod
-    @njit
     def _pollute_data(
         X: np.ndarray, pollute_type: str, pollute_k: int, additional_pollute_k: int
     ) -> np.ndarray:
@@ -645,7 +645,7 @@ if __name__ == "__main__":
     print("Binary Mask:")
     selector = PollutionSelect(
         model,
-        n_iter=100,
+        n_iter=1000,
         pollute_type="random_k",
         drop_features=False,
         performance_threshold=0.7,
