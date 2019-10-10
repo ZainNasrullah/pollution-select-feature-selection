@@ -85,6 +85,15 @@ class PollutionSelect:
         Names for the features in the dataset. Primarily used to understand which
         features are being dropped.
 
+    parallel : bool or int, optional (default=False)
+        If true, use all cpu_workers to train models. If an integer is passed in, use
+        the specified number of workers. If False, do not use multiprocessing at all.
+
+        This can provide fairly good boosts in performance on Unix, but the gains
+        are less significant on Windows because processes cannot be forked. Also note
+        that if using this on Windows, fit() or fit_transform() must be called inside
+         if __name__ == "__main__":
+
     verbose : bool, optional (default=False)
         Whether to print out features that are being dropped.
 
@@ -129,6 +138,7 @@ class PollutionSelect:
         drop_every_n_iters: int = 5,
         use_predict_proba: bool = False,
         feature_names: Optional[List[str]] = None,
+        parallel: Union[bool, int] = False,
         verbose: bool = False,
     ) -> None:
         self.model = model
@@ -144,6 +154,7 @@ class PollutionSelect:
         self.min_features = min_features
         self.drop_every_n_iters = drop_every_n_iters
         self.use_predict_proba = use_predict_proba
+        self.parallel = parallel
         self.verbose = verbose
 
         # check model
@@ -185,7 +196,7 @@ class PollutionSelect:
 
         # check additional pollution
         if not isinstance(self.additional_pollution, bool):
-            raise TypeError("Additional pollution is not a boolean.")
+            raise TypeError("Additional pollution is not a boolean or int.")
 
         # check mask type
         if mask_type not in ["binary", "delta_weighted", "negative_score"]:
@@ -220,6 +231,10 @@ class PollutionSelect:
                 raise TypeError("Feature names is not a list.")
 
             self._name_mapping = {idx: name for idx, name in enumerate(feature_names)}
+
+        # check parallel
+        if not isinstance(self.parallel, (bool, int)):
+            raise TypeError("parallel is not a boolean.")
 
         # check verbosity
         if not isinstance(self.verbose, bool):
@@ -263,37 +278,42 @@ class PollutionSelect:
             )
         mask_array = np.zeros(n_features)
         self._init_fit_params(X)
-        self.parallel = True
 
         if self.parallel:
-            num_workers = mp.cpu_count()
+            parallel_bool_flag = isinstance(self.parallel, bool)
+            if not parallel_bool_flag and self.parallel > mp.cpu_count():
+                raise ValueError(
+                    f"More workers specified ({self.parallel})"
+                    f" than are available on this"
+                    f" machine ({mp.cpu_count()})"
+                )
+
+            num_workers = self.parallel if not parallel_bool_flag else mp.cpu_count()
             pool = mp.Pool(num_workers)
-            iters = int(self.n_iter / self.drop_every_n_iters)
+
+            if self.drop_features:
+                iters = int(self.n_iter / self.drop_every_n_iters)
+                drop_every = self.drop_every_n_iters
+            else:
+                iters = 1
+                drop_every = self.n_iter
         else:
             iters = self.n_iter
 
-        for iter_idx in range(iters):
+        iter_idx = 0
+        for _ in range(iters):
             X_sample = X[:, self.retained_features_]
-
-            # number of features may change as features are dropped across iters
-            n_features = X_sample.shape[1]
-            X_pollute = self._pollute_data(
-                X_sample, self.pollute_type, self.pollute_k, self._additional_pollute_k
-            )
 
             if self.parallel:
                 results = []
-                for _ in range(self.drop_every_n_iters):
-                    mp_args = (X_pollute, y, n_features)
+                for _ in range(drop_every):
+                    mp_args = (X_sample, y)
                     mp_result = pool.apply_async(self._train_model, args=mp_args)
                     results.append(mp_result)
-
                 results = [result.get() for result in results]
                 masks, test_scores, train_scores = list(zip(*results))
             else:
-                mask, test_score, train_score = self._train_model(
-                    X_pollute, y, n_features
-                )
+                mask, test_score, train_score = self._train_model(X_sample, y)
                 masks = [mask]
                 test_scores = [test_score]
                 train_scores = [train_score]
@@ -311,8 +331,9 @@ class PollutionSelect:
                             f"Did not meet tests threshold: {self.metric}>{self.threshold}"
                         )
                     self.failures_ += 1
+                self._record_iter(iter_idx, train_score, test_score)
+                iter_idx += 1
 
-            self._record_iter(iter_idx, train_score, test_score)
             if self.drop_features:
                 self._eval_dropping_conditions(iter_idx)
 
@@ -322,7 +343,14 @@ class PollutionSelect:
 
         return self
 
-    def _train_model(self, X_pollute, y, n_features):
+    def _train_model(self, X_sample, y):
+
+        # number of features may change as features are dropped across iters
+        n_features = X_sample.shape[1]
+        X_pollute = self._pollute_data(
+            X_sample, self.pollute_type, self.pollute_k, self._additional_pollute_k
+        )
+
         X_train, X_test, y_train, y_test = train_test_split(
             X_pollute,
             y,
@@ -623,6 +651,7 @@ if __name__ == "__main__":
         performance_threshold=0.7,
         performance_function=acc,
         mask_type="binary",
+        parallel=True,
     )
 
     start = time.time()
@@ -642,6 +671,7 @@ if __name__ == "__main__":
         performance_threshold=0.7,
         performance_function=acc,
         mask_type="delta_weighted",
+        parallel=True,
     )
 
     start = time.time()
@@ -661,6 +691,7 @@ if __name__ == "__main__":
         performance_threshold=0.7,
         performance_function=acc,
         mask_type="negative_score",
+        parallel=True,
     )
 
     start = time.time()
