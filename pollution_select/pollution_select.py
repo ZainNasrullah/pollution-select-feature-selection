@@ -17,7 +17,8 @@ from sklearn.utils import shuffle
 import inspect
 
 import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 class PollutionSelect:
@@ -283,11 +284,9 @@ class PollutionSelect:
             if self.parallel:
                 results = []
                 for _ in range(self.drop_every_n_iters):
-                    results.append(
-                        pool.apply_async(
-                            self._train_model, args=(X_pollute, y, n_features)
-                        )
-                    )
+                    mp_args = (X_pollute, y, n_features)
+                    mp_result = pool.apply_async(self._train_model, args=mp_args)
+                    results.append(mp_result)
 
                 results = [result.get() for result in results]
                 masks, test_scores, train_scores = list(zip(*results))
