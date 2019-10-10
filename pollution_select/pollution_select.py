@@ -636,7 +636,7 @@ if __name__ == "__main__":
         return np.mean(y == preds)
 
     X, y = make_classification(
-        n_samples=10000, n_features=15, n_informative=5, n_redundant=5, shuffle=False
+        n_samples=1000, n_features=15, n_informative=5, n_redundant=5, shuffle=False
     )
     X, y = shuffle(X, y)
 
@@ -645,7 +645,7 @@ if __name__ == "__main__":
     print("Binary Mask:")
     selector = PollutionSelect(
         model,
-        n_iter=1000,
+        n_iter=100,
         pollute_type="random_k",
         drop_features=False,
         performance_threshold=0.7,
