@@ -12,7 +12,6 @@ from sklearn.exceptions import NotFittedError
 import multiprocessing as mp
 from typing import List, Union, Tuple, Optional, Callable
 import collections.abc
-from sklearn.utils import shuffle
 import inspect
 
 import warnings
@@ -215,6 +214,7 @@ class PollutionSelect:
             "negative_score",
             "test_weighted",
             "delta_negative",
+            "extreme_delta_negative"
         ]
         if mask_type not in mask_types:
             raise ValueError("Mask type should be 'binary' or 'weighted'")
@@ -487,24 +487,24 @@ class PollutionSelect:
         test_score = kwargs.pop("test_score")
 
         if self.mask_type == "binary":
-            mask = self._create_binary_mask_from_pollution(**kwargs)
+            mask = self._create_binary_mask(**kwargs)
         elif self.mask_type == "delta_weighted":
-            mask = self._create_weighted_mask_from_pollution(**kwargs)
+            mask = self._create_delta_weighted_mask(**kwargs)
         elif self.mask_type == "negative_score":
-            mask = self._create_negative_weight_mask_from_pollution(**kwargs)
+            mask = self._create_negative_weight_mask(**kwargs)
         elif self.mask_type == "test_weighted":
-            mask = self._create_test_weight_mask_from_pollution(
-                **kwargs, test_score=test_score
-            )
+            mask = self._create_test_weight_mask(**kwargs, test_score=test_score)
         elif self.mask_type == "delta_negative":
-            mask = self._create_delta_weighted_negative_mask_from_pollution(**kwargs)
+            mask = self._create_delta_weighted_negative_mask(**kwargs)
+        elif self.mask_type == "extreme_delta_negative":
+            mask = self._create_delta_weighted_extreme_negative_mask(**kwargs)
         else:
             mask = None
 
         return mask
 
     @staticmethod
-    def _create_binary_mask_from_pollution(
+    def _create_binary_mask(
         n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
         """Create binary mask by comparing original feature importances
@@ -519,7 +519,7 @@ class PollutionSelect:
         return mask
 
     @staticmethod
-    def _create_weighted_mask_from_pollution(
+    def _create_delta_weighted_mask(
         n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
         """ Extends the binary mask by additionally weighting by differences in
@@ -540,7 +540,7 @@ class PollutionSelect:
         return weighted_mask
 
     @staticmethod
-    def _create_negative_weight_mask_from_pollution(
+    def _create_negative_weight_mask(
         n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
         """ Extends the binary mask by assigning an original features which fails
@@ -557,11 +557,10 @@ class PollutionSelect:
         return mask
 
     @staticmethod
-    def _create_test_weight_mask_from_pollution(
+    def _create_test_weight_mask(
         n_features: int, pollute_shape: int, importances: np.ndarray, test_score: float
     ) -> np.ndarray:
-        """ Extends the binary mask by assigning an original features which fails
-         to beat a noisy feature a negative score """
+        """ Extends the binary mask by scaling by test score"""
         pollute_idx = np.arange(n_features, n_features + pollute_shape)
 
         mask = np.zeros(n_features)
@@ -576,11 +575,10 @@ class PollutionSelect:
         return weighted_mask_norm
 
     @staticmethod
-    def _create_delta_weighted_negative_mask_from_pollution(
+    def _create_delta_weighted_negative_mask(
         n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
-        """ Extends the binary mask by additionally weighting by differences in
-         feature importance and then normalizing into [0,1]"""
+        """ Combines the delta weighting and negative mask methods"""
         pollute_idx = np.arange(n_features, n_features + pollute_shape)
         scaling = 1 / pollute_shape
 
@@ -596,6 +594,27 @@ class PollutionSelect:
         min_element = np.min(deltas)
         delta_norm = (deltas - min_element) / (max_element - min_element)
         mask[mask > 0] = mask[mask > 0] * delta_norm[mask > 0]
+
+        return mask
+
+    @staticmethod
+    def _create_delta_weighted_extreme_negative_mask(
+        n_features: int, pollute_shape: int, importances: np.ndarray
+    ) -> np.ndarray:
+        """ Combines the delta weight with a more extreme version of negative scaling"""
+        pollute_idx = np.arange(n_features, n_features + pollute_shape)
+
+        mask = np.zeros(n_features)
+        deltas = np.zeros(n_features)
+        for i in range(n_features):
+            mask[i] = np.all(importances[i] > 2 * importances[pollute_idx])
+            deltas[i] = importances[i] - np.max(importances[pollute_idx])
+
+        mask[mask == 0] = -1
+        max_element = np.max(deltas)
+        min_element = np.min(deltas)
+        deltas_norm = (deltas - min_element) / (max_element - min_element)
+        mask[mask > 0] = mask[mask > 0] * deltas_norm[mask > 0]
 
         return mask
 

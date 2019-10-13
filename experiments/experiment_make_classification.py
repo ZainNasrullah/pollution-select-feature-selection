@@ -2,6 +2,7 @@ import numpy as np
 
 from sklearn.utils import shuffle
 import warnings
+
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 from sklearn.datasets import make_classification
@@ -9,7 +10,8 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 import time
 
 import sys
-sys.path.append('..')
+
+sys.path.append("..")
 from pollution_select import PollutionSelect
 
 
@@ -18,7 +20,7 @@ def acc(y, preds):
 
 
 def run_pollution_select(X, y, model, mask_type, n_iter, pollute_k):
-    print('\n' + mask_type)
+    print("\n" + mask_type)
     selector = PollutionSelect(
         model,
         n_iter=n_iter,
@@ -50,8 +52,8 @@ if __name__ == "__main__":
     )
     X, y = shuffle(X, y)
 
-    # model = RandomForestClassifier()
-    model = GradientBoostingClassifier()
+    model = RandomForestClassifier()
+    # model = GradientBoostingClassifier()
 
     binary_params = dict(mask_type="binary", n_iter=100, pollute_k=5)
     run_pollution_select(X, y, model, **binary_params)
@@ -63,6 +65,11 @@ if __name__ == "__main__":
     run_pollution_select(X, y, model, **negative_score_params)
 
     delta_negative_params = dict(mask_type="delta_negative", n_iter=100, pollute_k=5)
+    run_pollution_select(X, y, model, **delta_negative_params)
+
+    delta_negative_params = dict(
+        mask_type="extreme_delta_negative", n_iter=100, pollute_k=5
+    )
     run_pollution_select(X, y, model, **delta_negative_params)
 
     test_weighted_params = dict(mask_type="test_weighted", n_iter=100, pollute_k=5)
