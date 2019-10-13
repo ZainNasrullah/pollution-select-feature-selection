@@ -29,11 +29,11 @@ class PollutionSelect:
         Must have fit and predict method implemented as well as a
         feature_importances_ attribute after fitting.
 
-    performance_function : function(y_true, y_predictions)
+    performance_function : function(y_true, y_predictions), optional (default=None)
         Function which measures performance. After fitting the model, it gets
         against this function during cross-validation.
 
-    performance_threshold : float
+    performance_threshold : float, optional (default=None)
         Target performance that must be achieved by the model to update feature
         importance values. If not met, the number of failures is incremented.
 
@@ -124,8 +124,10 @@ class PollutionSelect:
     def __init__(
         self,
         model,
-        performance_function: Callable[[np.ndarray, np.ndarray], float],
-        performance_threshold: float,
+        performance_function: Optional[
+            Callable[[np.ndarray, np.ndarray], float]
+        ] = None,
+        performance_threshold: Optional[float] = None,
         n_iter: int = 100,
         data_subsample_ratio: float = 0.5,
         pollute_type: str = "random_k",
@@ -162,15 +164,24 @@ class PollutionSelect:
         if not hasattr(self.model, "predict"):
             raise TypeError("Model does not have a predict() method")
 
+        # check that that metric and threshold are defined together
+        if self.metric is not None and self.threshold is None:
+            raise TypeError("Threshold cannot be none if metric is provided.")
+        if self.metric is None and self.threshold is not None:
+            raise TypeError("Metric cannot be none if threshold is provided.")
+
         # check metric
-        if not len(inspect.signature(self.metric).parameters) == 2:
+        if (
+            self.metric is not None
+            and not len(inspect.signature(self.metric).parameters) == 2
+        ):
             raise TypeError(
                 "metric should only take in two parameters,"
                 " e.g., acc(y_true, y_preds)"
             )
 
         # check threshold
-        if not isinstance(self.threshold, (int, float)):
+        if self.threshold is not None and not isinstance(self.threshold, (int, float)):
             raise TypeError("self.threshold is not an int or float")
 
         # check iters
@@ -325,7 +336,7 @@ class PollutionSelect:
                 train_scores = [train_score]
 
             for mask, train_score, test_score in zip(masks, train_scores, test_scores):
-                if test_score >= self.threshold:
+                if self.metric is None or test_score >= self.threshold:
                     mask_array[self.retained_features_] += mask
                     self.successes_ += 1
                     self.feature_importances_[self.retained_features_] = (
@@ -557,7 +568,7 @@ class PollutionSelect:
         for i in range(n_features):
             mask[i] = np.all(importances[i] > 2 * importances[pollute_idx])
 
-        weighted_mask = mask * test_score
+        weighted_mask = mask * test_score if test_score is not None else mask
         max_element = np.max(weighted_mask)
         min_element = np.min(weighted_mask)
         weighted_mask_norm = (weighted_mask - min_element) / (max_element - min_element)
@@ -616,14 +627,16 @@ class PollutionSelect:
             train_preds = self.model.predict_proba(X_train)
             test_preds = self.model.predict_proba(X_test)
 
-        train_score = self.metric(y_train, train_preds)
-        test_score = self.metric(y_test, test_preds)
+        train_score, test_score = None, None
+        if self.metric is not None:
+            train_score = self.metric(y_train, train_preds)
+            test_score = self.metric(y_test, test_preds)
 
-        if not isinstance(train_score, (int, float)):
-            raise TypeError("self.metric did not return an integer or float")
+            if not isinstance(train_score, (int, float)):
+                raise TypeError("self.metric did not return an integer or float")
 
-        if not isinstance(test_score, (int, float)):
-            raise TypeError("self.metric did not return an integer or float")
+            if not isinstance(test_score, (int, float)):
+                raise TypeError("self.metric did not return an integer or float")
 
         return train_score, test_score
 
