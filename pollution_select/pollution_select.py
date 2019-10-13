@@ -199,7 +199,8 @@ class PollutionSelect:
             raise TypeError("Additional pollution is not a boolean or int.")
 
         # check mask type
-        if mask_type not in ["binary", "delta_weighted", "negative_score"]:
+        mask_types = ["binary", "delta_weighted", "negative_score", "test_weighted"]
+        if mask_type not in mask_types:
             raise ValueError("Mask type should be 'binary' or 'weighted'")
 
         # check feature dropping
@@ -368,6 +369,7 @@ class PollutionSelect:
             n_features=n_features,
             pollute_shape=pollute_count,
             importances=self.model.feature_importances_,
+            test_score=test_score,
         )
         return mask, test_score, train_score
 
@@ -466,12 +468,18 @@ class PollutionSelect:
 
     def _create_mask_from_pollution(self, **kwargs) -> np.ndarray:
 
+        test_score = kwargs.pop("test_score")
+
         if self.mask_type == "binary":
             mask = self._create_binary_mask_from_pollution(**kwargs)
         elif self.mask_type == "delta_weighted":
             mask = self._create_weighted_mask_from_pollution(**kwargs)
         elif self.mask_type == "negative_score":
             mask = self._create_negative_weight_mask_from_pollution(**kwargs)
+        elif self.mask_type == "test_weighted":
+            mask = self._create_test_weight_mask_from_pollution(
+                **kwargs, test_score=test_score
+            )
         else:
             mask = None
 
@@ -488,7 +496,7 @@ class PollutionSelect:
 
         mask = np.zeros(n_features)
         for i in range(n_features):
-            mask[i] = np.all(importances[i] > importances[pollute_idx])
+            mask[i] = np.all(importances[i] > 2 * importances[pollute_idx])
 
         return mask
 
@@ -503,8 +511,8 @@ class PollutionSelect:
         mask = np.zeros(n_features)
         deltas = np.zeros(n_features)
         for i in range(n_features):
-            mask[i] = np.all(importances[i] > importances[pollute_idx])
-            deltas[i] = importances[i] - np.mean(importances[pollute_idx])
+            mask[i] = np.all(importances[i] > 2 * importances[pollute_idx])
+            deltas[i] = importances[i] - np.max(importances[pollute_idx])
 
         weighted_mask = mask * deltas
         max_element = np.max(weighted_mask)
@@ -529,6 +537,25 @@ class PollutionSelect:
             mask[i] = np.sum(scaled_comparison)
 
         return mask
+
+    @staticmethod
+    def _create_test_weight_mask_from_pollution(
+        n_features: int, pollute_shape: int, importances: np.ndarray, test_score: float
+    ) -> np.ndarray:
+        """ Extends the binary mask by assigning an original features which fails
+         to beat a noisy feature a negative score """
+        pollute_idx = np.arange(n_features, n_features + pollute_shape)
+
+        mask = np.zeros(n_features)
+        for i in range(n_features):
+            mask[i] = np.all(importances[i] > 2 * importances[pollute_idx])
+
+        weighted_mask = mask * test_score
+        max_element = np.max(weighted_mask)
+        min_element = np.min(weighted_mask)
+        weighted_mask_norm = (weighted_mask - min_element) / (max_element - min_element)
+
+        return weighted_mask_norm
 
     def _get_pollute_count(self) -> int:
         """Create pollution shape"""
@@ -627,7 +654,7 @@ class PollutionSelect:
 if __name__ == "__main__":
 
     from sklearn.datasets import make_classification
-    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
     import time
 
     np.set_printoptions(formatter={"float": lambda x: "{0:0.3f}".format(x)})
@@ -640,7 +667,8 @@ if __name__ == "__main__":
     )
     X, y = shuffle(X, y)
 
-    model = RandomForestClassifier()
+    # model = RandomForestClassifier()
+    model = GradientBoostingClassifier()
 
     print("Binary Mask:")
     selector = PollutionSelect(
@@ -671,6 +699,26 @@ if __name__ == "__main__":
         performance_threshold=0.7,
         performance_function=acc,
         mask_type="delta_weighted",
+        parallel=True,
+    )
+
+    start = time.time()
+    X_dropped = selector.fit_transform(X, y)
+    end = time.time()
+    print("{0:.2f}s".format(end - start))
+    print("Relevant:", selector.feature_importances_[:5])
+    print("Redundant:", selector.feature_importances_[5:10])
+    print("Noise:", selector.feature_importances_[10:])
+
+    print("\nTest Weighted Mask:")
+    selector = PollutionSelect(
+        model,
+        n_iter=100,
+        pollute_type="random_k",
+        drop_features=False,
+        performance_threshold=0.7,
+        performance_function=acc,
+        mask_type="test_weighted",
         parallel=True,
     )
 
