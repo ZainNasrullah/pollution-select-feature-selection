@@ -584,9 +584,9 @@ class PollutionSelect:
         max_element = np.max(deltas)
         min_element = np.min(deltas)
         delta_norm = (deltas - min_element) / (max_element - min_element)
-        weighted_mask = mask * delta_norm
+        mask[mask > 0] = mask[mask > 0] * delta_norm[mask > 0]
 
-        return weighted_mask
+        return mask
 
     def _get_pollute_count(self) -> int:
         """Create pollution shape"""
