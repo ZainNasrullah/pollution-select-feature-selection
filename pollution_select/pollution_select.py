@@ -210,8 +210,8 @@ class PollutionSelect:
         # check mask type
         mask_types = [
             "binary",
-            "delta_weighted",
-            "negative_score",
+            "delta",
+            "negative",
             "test_weighted",
             "delta_negative",
             "extreme_delta_negative"
@@ -493,9 +493,9 @@ class PollutionSelect:
 
         if self.mask_type == "binary":
             mask = self._create_binary_mask(**kwargs)
-        elif self.mask_type == "delta_weighted":
+        elif self.mask_type == "delta":
             mask = self._create_delta_weighted_mask(**kwargs)
-        elif self.mask_type == "negative_score":
+        elif self.mask_type == "negative":
             mask = self._create_negative_weight_mask(**kwargs)
         elif self.mask_type == "test_weighted":
             mask = self._create_test_weight_mask(**kwargs, test_score=test_score)
@@ -519,7 +519,7 @@ class PollutionSelect:
 
         mask = np.zeros(n_features)
         for i in range(n_features):
-            mask[i] = np.all(importances[i] > 2 * importances[pollute_idx])
+            mask[i] = np.all(importances[i] > importances[pollute_idx])
 
         return mask
 
@@ -534,7 +534,7 @@ class PollutionSelect:
         mask = np.zeros(n_features)
         deltas = np.zeros(n_features)
         for i in range(n_features):
-            mask[i] = np.all(importances[i] > 2 * importances[pollute_idx])
+            mask[i] = np.all(importances[i] > importances[pollute_idx])
             deltas[i] = importances[i] - np.max(importances[pollute_idx])
 
         max_element = np.max(deltas)
@@ -555,7 +555,7 @@ class PollutionSelect:
 
         mask = np.zeros(n_features)
         for i in range(n_features):
-            feat_comparison = importances[i] > 2 * importances[pollute_idx]
+            feat_comparison = importances[i] > importances[pollute_idx]
             scaled_comparison = np.where(feat_comparison, scaling, -1 * scaling)
             mask[i] = np.sum(scaled_comparison)
 
@@ -570,7 +570,7 @@ class PollutionSelect:
 
         mask = np.zeros(n_features)
         for i in range(n_features):
-            mask[i] = np.all(importances[i] > 2 * importances[pollute_idx])
+            mask[i] = np.all(importances[i] > importances[pollute_idx])
 
         weighted_mask = mask * test_score if test_score is not None else mask
         max_element = np.max(weighted_mask)
@@ -590,7 +590,7 @@ class PollutionSelect:
         mask = np.zeros(n_features)
         deltas = np.zeros(n_features)
         for i in range(n_features):
-            feat_comparison = importances[i] > 2 * importances[pollute_idx]
+            feat_comparison = importances[i] > importances[pollute_idx]
             scaled_comparison = np.where(feat_comparison, scaling, -1 * scaling)
             mask[i] = np.sum(scaled_comparison)
             deltas[i] = importances[i] - np.max(importances[pollute_idx])
@@ -612,7 +612,7 @@ class PollutionSelect:
         mask = np.zeros(n_features)
         deltas = np.zeros(n_features)
         for i in range(n_features):
-            mask[i] = np.all(importances[i] > 2 * importances[pollute_idx])
+            mask[i] = np.all(importances[i] > importances[pollute_idx])
             deltas[i] = importances[i] - np.max(importances[pollute_idx])
 
         mask[mask == 0] = -1

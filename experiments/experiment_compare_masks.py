@@ -20,7 +20,6 @@ def acc(y, preds):
 
 
 def run_pollution_select(X, y, model, mask_type, n_iter, pollute_k):
-    print("\n" + mask_type)
     selector = PollutionSelect(
         model,
         n_iter=n_iter,
@@ -36,9 +35,17 @@ def run_pollution_select(X, y, model, mask_type, n_iter, pollute_k):
     start = time.time()
     selector.fit_transform(X, y)
     end = time.time()
+
+    file = open("outputs/compare_masks.txt", 'a')
+    print("\n" + mask_type)
     print("{0:.2f}s".format(end - start))
     print("Relevant:", selector.feature_importances_[:5])
     print("Noise:", selector.feature_importances_[5:])
+    file.write(mask_type)
+    file.write("\n{0:.2f}s".format(end - start))
+    file.write(f"\nRelevant: {selector.feature_importances_[:5]}")
+    file.write(f"\nNoise: {selector.feature_importances_[5:]}\n\n")
+    file.close()
 
     return selector
 
@@ -46,21 +53,28 @@ def run_pollution_select(X, y, model, mask_type, n_iter, pollute_k):
 if __name__ == "__main__":
 
     np.set_printoptions(formatter={"float": lambda x: "{0:0.3f}".format(x)})
+    file = open("outputs/compare_masks.txt", 'w')
 
+    random_state = 42
     X, y = make_classification(
-        n_samples=1000, n_features=15, n_informative=5, n_redundant=0, shuffle=False
+        n_samples=1000,
+        n_features=15,
+        n_informative=5,
+        n_redundant=0,
+        shuffle=False,
+        random_state=random_state,
     )
-    X, y = shuffle(X, y)
+    X, y = shuffle(X, y, random_state=random_state)
 
-    model = RandomForestClassifier()
+    model = RandomForestClassifier(random_state=random_state)
 
     binary_params = dict(mask_type="binary", n_iter=100, pollute_k=1)
     run_pollution_select(X, y, model, **binary_params)
 
-    delta_weighted_params = dict(mask_type="delta_weighted", n_iter=100, pollute_k=1)
+    delta_weighted_params = dict(mask_type="delta", n_iter=100, pollute_k=1)
     run_pollution_select(X, y, model, **delta_weighted_params)
 
-    negative_score_params = dict(mask_type="negative_score", n_iter=100, pollute_k=1)
+    negative_score_params = dict(mask_type="negative", n_iter=100, pollute_k=1)
     run_pollution_select(X, y, model, **negative_score_params)
 
     delta_negative_params = dict(mask_type="delta_negative", n_iter=100, pollute_k=1)
