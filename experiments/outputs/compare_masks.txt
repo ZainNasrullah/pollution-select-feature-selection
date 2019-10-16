@@ -1,0 +1,35 @@
+/home/zain/anaconda3/envs/feature-selection-experiments/bin/python /snap/pycharm-professional/159/helpers/pydev/pydevconsole.py --mode=client --port=44083
+
+import sys; print('Python %s on %s' % (sys.version, sys.platform))
+sys.path.extend(['/home/zain/projects/feature-selection-experiments'])
+
+PyDev console: starting.
+
+Python 3.7.3 | packaged by conda-forge | (default, Jul  1 2019, 21:52:21)
+[GCC 7.3.0] on linux
+>>> runfile('/home/zain/projects/feature-selection-experiments/experiments/experiment_compare_masks.py', wdir='/home/zain/projects/feature-selection-experiments/experiments')
+
+binary
+0.62s
+Relevant: [1.000 0.700 1.000 0.390 0.460]
+Noise: [0.000 0.000 0.000 0.000 0.040 0.000 0.000 0.000 0.000 0.000]
+
+delta_weighted
+0.51s
+Relevant: [0.862 0.461 0.959 0.183 0.250]
+Noise: [0.000 0.000 0.000 0.000 0.008 0.000 0.000 0.000 0.000 0.000]
+
+negative_score
+0.72s
+Relevant: [1.000 0.787 1.000 0.400 0.487]
+Noise: [-0.300 -0.287 -0.273 -0.333 -0.247 -0.327 -0.327 -0.307 -0.253 -0.327]
+
+delta_negative
+0.72s
+Relevant: [0.864 0.497 0.958 0.134 0.211]
+Noise: [-0.315 -0.306 -0.298 -0.333 -0.293 -0.330 -0.329 -0.318 -0.285 -0.330]
+
+extreme_delta_negative
+1.03s
+Relevant: [0.860 0.167 0.959 -0.432 -0.285]
+Noise: [-1.000 -1.000 -1.000 -1.000 -0.952 -1.000 -1.000 -1.000 -1.000 -1.000]

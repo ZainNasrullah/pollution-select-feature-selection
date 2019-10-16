@@ -69,7 +69,7 @@ if __name__ == "__main__":
         end = time.time()
         print(f"{pollute_k}/{n_features} -- {end - start:.2f}s")
 
-    relevant, redundant, noise = zip(*importance_list)
+    relevant, noise = zip(*importance_list)
     x = range(n_features)
     plt.plot(x, relevant, label="relevant")
     plt.plot(x, noise, label="noise")
