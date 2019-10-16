@@ -297,16 +297,7 @@ class PollutionSelect:
         self._init_fit_params(X)
 
         if self.parallel:
-            parallel_bool_flag = isinstance(self.parallel, bool)
-            if not parallel_bool_flag and self.parallel > mp.cpu_count():
-                raise ValueError(
-                    f"More workers specified ({self.parallel})"
-                    f" than are available on this"
-                    f" machine ({mp.cpu_count()})"
-                )
-
-            num_workers = self.parallel if not parallel_bool_flag else mp.cpu_count()
-            pool = mp.Pool(num_workers)
+            pool = self._get_parallel_pool()
 
             if self.drop_features:
                 iters = int(self.n_iter / self.drop_every_n_iters)
@@ -345,7 +336,8 @@ class PollutionSelect:
                 else:
                     if self.verbose:
                         print(
-                            f"Did not meet tests threshold: {self.metric}>{self.threshold}"
+                            f"Did not meet tests threshold: "
+                            f"{self.metric.__name__}>{self.threshold}"
                         )
                     self.failures_ += 1
                 self._record_iter(iter_idx, train_score, test_score)
@@ -359,6 +351,19 @@ class PollutionSelect:
             pool.join()
 
         return self
+
+    def _get_parallel_pool(self):
+        """Utility function for initializing pool of workers"""
+        parallel_bool_flag = isinstance(self.parallel, bool)
+        if not parallel_bool_flag and self.parallel > mp.cpu_count():
+            raise ValueError(
+                f"More workers specified ({self.parallel})"
+                f" than are available on this"
+                f" machine ({mp.cpu_count()})"
+            )
+        num_workers = self.parallel if not parallel_bool_flag else mp.cpu_count()
+        pool = mp.Pool(num_workers)
+        return pool
 
     def _train_model(self, X_sample: np.ndarray, y: np.ndarray):
         """Utility function for pollution, training and mask generation"""
