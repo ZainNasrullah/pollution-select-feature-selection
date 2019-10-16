@@ -48,22 +48,20 @@ if __name__ == "__main__":
     np.set_printoptions(formatter={"float": lambda x: "{0:0.3f}".format(x)})
     model = RandomForestClassifier()
 
-
+    X, y = make_classification(
+        n_samples=10000,
+        n_features=n_features,
+        n_informative=n_relevant,
+        n_redundant=n_redundant,
+        shuffle=False,
+    )
+    X, y = shuffle(X, y)
 
     importance_list = []
     for iter_idx in range(1, n_iterations + 1):
         start = time.time()
 
-        X, y = make_classification(
-            n_samples=10000,
-            n_features=n_features,
-            n_informative=n_relevant,
-            n_redundant=n_redundant,
-            shuffle=False,
-        )
-        X, y = shuffle(X, y)
-
-        binary_params = dict(mask_type="negative_score", n_iter=iter_idx, pollute_k=1)
+        binary_params = dict(mask_type="delta_negative", n_iter=iter_idx, pollute_k=1)
         selector = run_pollution_select(X, y, model, **binary_params)
 
         relevant_imp = np.max(selector.feature_importances_[:n_relevant])

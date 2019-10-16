@@ -336,8 +336,8 @@ class PollutionSelect:
                 else:
                     if self.verbose:
                         print(
-                            f"Did not meet tests threshold: "
-                            f"{self.metric.__name__}>{self.threshold}"
+                            f"Did not meet test threshold: "
+                            f"{self.metric.__name__}=={test_score} < {self.threshold}"
                         )
                     self.failures_ += 1
                 self._record_iter(iter_idx, train_score, test_score)
