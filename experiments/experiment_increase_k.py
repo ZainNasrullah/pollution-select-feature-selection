@@ -32,8 +32,9 @@ def run_pollution_select(X, y, model, mask_type, n_iter, pollute_k):
         performance_function=acc,
         mask_type=mask_type,
         parallel=True,
+        verbose=True,
     )
-    X_dropped = selector.fit_transform(X, y)
+    selector.fit(X, y)
 
     return selector
 
@@ -41,10 +42,9 @@ def run_pollution_select(X, y, model, mask_type, n_iter, pollute_k):
 if __name__ == "__main__":
 
     n_iterations = 100
-    n_features = 150
+    n_features = 100
     n_relevant = 50
-    n_redundant = 50
-    n_useful = n_relevant + n_redundant
+    n_redundant = 0
     np.set_printoptions(formatter={"float": lambda x: "{0:0.3f}".format(x)})
     model = RandomForestClassifier()
 
@@ -60,22 +60,21 @@ if __name__ == "__main__":
     importance_list = []
     for pollute_k in range(1, n_features + 1):
         start = time.time()
-        binary_params = dict(mask_type="binary", n_iter=100, pollute_k=pollute_k)
+        binary_params = dict(mask_type="delta_negative", n_iter=100, pollute_k=pollute_k)
         selector = run_pollution_select(X, y, model, **binary_params)
 
-        relevant_imp = np.mean(selector.feature_importances_[:n_relevant])
-        redundant_imp = np.mean(selector.feature_importances_[n_relevant:n_useful])
-        noisy_imp = np.mean(selector.feature_importances_[n_useful:])
+        relevant_imp = np.max(selector.feature_importances_[:n_relevant])
+        noisy_imp = np.max(selector.feature_importances_[n_relevant:])
+        importance_list.append((relevant_imp, noisy_imp))
         end = time.time()
-        print(f"{pollute_k}/{n_iterations} -- {end - start:.2f}s")
+        print(f"{pollute_k}/{n_features} -- {end - start:.2f}s")
 
     relevant, redundant, noise = zip(*importance_list)
     x = range(n_features)
     plt.plot(x, relevant, label="relevant")
-    plt.plot(x, redundant, label="redundant")
     plt.plot(x, noise, label="noise")
     plt.xlabel("Pollute K")
-    plt.ylabel("Avg Feature Importance")
+    plt.ylabel("Max Feature Importance")
     plt.legend()
     plt.title("Feature Importance by Pollute K")
 

@@ -32,8 +32,9 @@ def run_pollution_select(X, y, model, mask_type, n_iter, pollute_k):
         performance_function=acc,
         mask_type=mask_type,
         parallel=True,
+        verbose=True,
     )
-    X_dropped = selector.fit_transform(X, y)
+    selector.fit(X, y)
 
     return selector
 
@@ -41,42 +42,42 @@ def run_pollution_select(X, y, model, mask_type, n_iter, pollute_k):
 if __name__ == "__main__":
 
     n_iterations = 100
-    n_features = 150
+    n_features = 100
     n_relevant = 50
-    n_redundant = 50
-    n_useful = n_relevant + n_redundant
+    n_redundant = 0
     np.set_printoptions(formatter={"float": lambda x: "{0:0.3f}".format(x)})
     model = RandomForestClassifier()
 
-    X, y = make_classification(
-        n_samples=10000,
-        n_features=n_features,
-        n_informative=n_relevant,
-        n_redundant=n_redundant,
-        shuffle=False,
-    )
-    X, y = shuffle(X, y)
+
 
     importance_list = []
     for iter_idx in range(1, n_iterations + 1):
         start = time.time()
-        binary_params = dict(mask_type="binary", n_iter=iter_idx, pollute_k=3)
+
+        X, y = make_classification(
+            n_samples=10000,
+            n_features=n_features,
+            n_informative=n_relevant,
+            n_redundant=n_redundant,
+            shuffle=False,
+        )
+        X, y = shuffle(X, y)
+
+        binary_params = dict(mask_type="negative_score", n_iter=iter_idx, pollute_k=1)
         selector = run_pollution_select(X, y, model, **binary_params)
 
-        relevant_imp = np.mean(selector.feature_importances_[:n_relevant])
-        redundant_imp = np.mean(selector.feature_importances_[n_relevant:n_useful])
-        noisy_imp = np.mean(selector.feature_importances_[n_useful:])
-        importance_list.append((relevant_imp, redundant_imp, noisy_imp))
+        relevant_imp = np.max(selector.feature_importances_[:n_relevant])
+        noisy_imp = np.max(selector.feature_importances_[n_relevant:])
+        importance_list.append((relevant_imp, noisy_imp))
         end = time.time()
         print(f"{iter_idx}/{n_iterations} -- {end - start:.2f}s")
 
-    relevant, redundant, noise = zip(*importance_list)
+    relevant, noise = zip(*importance_list)
     x = range(n_iterations)
     plt.plot(x, relevant, label="relevant")
-    plt.plot(x, redundant, label="redundant")
     plt.plot(x, noise, label="noise")
     plt.xlabel("Iterations")
-    plt.ylabel("Avg Feature Importance")
+    plt.ylabel("Max Feature Importance")
     plt.legend()
     plt.title("Feature Importance by Iterations")
 
