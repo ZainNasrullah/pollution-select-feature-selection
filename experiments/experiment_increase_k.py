@@ -59,12 +59,15 @@ if __name__ == "__main__":
 
     importance_list = []
     for pollute_k in range(1, n_features + 1):
+        start = time.time()
         binary_params = dict(mask_type="binary", n_iter=100, pollute_k=pollute_k)
         selector = run_pollution_select(X, y, model, **binary_params)
 
         relevant_imp = np.mean(selector.feature_importances_[:n_relevant])
         redundant_imp = np.mean(selector.feature_importances_[n_relevant:n_useful])
         noisy_imp = np.mean(selector.feature_importances_[n_useful:])
+        end = time.time()
+        print(f"{pollute_k}/{n_iterations} -- {end - start:.2f}s")
 
     relevant, redundant, noise = zip(*importance_list)
     x = range(n_features)
