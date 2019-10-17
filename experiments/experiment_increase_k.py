@@ -98,6 +98,10 @@ if __name__ == "__main__":
         *importance_list
     )
 
+    model.fit(X_train[:, :n_relevant], y_train)
+    preds = model.predict(X_test[:, :n_relevant])
+    relevant_result = acc(y_test, preds)
+
     x = range(n_features)
     plt.plot(x, mean_relevant, label="mean_relevant", c="b", linestyle="-")
     plt.plot(x, max_relevant, label="max/min relevant", c="b", linestyle=":")
@@ -107,7 +111,8 @@ if __name__ == "__main__":
     plt.plot(x, max_noise, label="max/min relevant", c="orange", linestyle=":")
     plt.plot(x, min_noise, c="orange", linestyle=":")
     plt.fill_between(x=x, y1=max_noise, y2=min_noise, color='orange', alpha=0.15)
-    plt.plot(x, results, label="test_acc", c="g", linestyle="-", linewidth=3)
+    plt.plot(x, results, label="test_acc", c="g", linestyle="-", linewidth=2)
+    plt.axhline(relevant_result, label="relevant_test_acc", c="g", linestyle=":")
     plt.xlabel("Pollute K")
     plt.ylabel("Feature Importance")
     plt.legend(fancybox=True, loc=7).get_frame().set_alpha(0.4)
