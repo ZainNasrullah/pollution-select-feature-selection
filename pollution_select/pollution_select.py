@@ -6,11 +6,17 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import warnings
 
 from sklearn.model_selection import train_test_split
 from sklearn.exceptions import NotFittedError
-from numba import njit, prange
+import multiprocessing as mp
+from typing import List, Union, Tuple, Optional, Callable
+import collections.abc
+import inspect
+
+import warnings
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 class PollutionSelect:
@@ -22,11 +28,11 @@ class PollutionSelect:
         Must have fit and predict method implemented as well as a
         feature_importances_ attribute after fitting.
 
-    performance_function : function(y_true, y_predictions)
+    performance_function : function(y_true, y_predictions), optional (default=None)
         Function which measures performance. After fitting the model, it gets
         against this function during cross-validation.
 
-    performance_threshold : float
+    performance_threshold : float, optional (default=None)
         Target performance that must be achieved by the model to update feature
         importance values. If not met, the number of failures is incremented.
 
@@ -34,7 +40,7 @@ class PollutionSelect:
         Number of iterations to run the feature selection for. Larger values
         will result in more accurate estimates of importances.
 
-    subsample_ratio : float, optional (default=0.5)
+    data_subsample_ratio : float, optional (default=0.5)
         Ratio to subsample the dataset at each iteration for computational reasons.
         Also introduces some randomness in the process.
 
@@ -53,6 +59,35 @@ class PollutionSelect:
 
         - Random normal (mean 0, variance 1)
         - Randomly drawn samples from [0, 1] using a discrete uniform distribution
+
+    mask_type: str, optional (default="binary")
+        specifies the type of mask to use based on the following:
+
+        binary:
+            scores 1 only if the feature is more important than every noisy feature
+
+        delta:
+            weights each original feature by the difference between its importance
+            value and the maximum noisy feature importance and then normalizes
+            values into [0,1]
+
+        negative:
+            each original feature is assigned a + score (1/n_noisy_features) for all
+            noisy features that it beats and a - score for all noisy features it fails
+            to beat. The returned mask is the sum of scores for each feature.
+
+        test_weighted:
+            extends binary by scaling by test score and normalizing (assumes positive
+            test score == good)
+
+        negative_delta:
+            combines delta+negative mask schemes. Features are first scored by how many
+            noisy features beat (+ score for each win, - score for each loss) and then
+            the positive scores are scaled by delta.
+
+        extreme_negative_delta:
+            similar to negative_delta but score is 1 if it beats all noisy features
+            and -1 otherwise. Then all positive scores are scaled by delta.
 
     drop_features : bool, optional (default=False)
         Whether to drop features. By default performs a check every
@@ -76,6 +111,15 @@ class PollutionSelect:
     feature_names : list of strings, optional (default=None)
         Names for the features in the dataset. Primarily used to understand which
         features are being dropped.
+
+    parallel : bool or int, optional (default=False)
+        If true, use all cpu_workers to train models. If an integer is passed in, use
+        the specified number of workers. If False, do not use multiprocessing at all.
+
+        This can provide fairly good boosts in performance on Unix, but the gains
+        are less significant on Windows because processes cannot be forked. Also note
+        that if using this on Windows, fit() or fit_transform() must be called inside
+         if __name__ == "__main__":
 
     verbose : bool, optional (default=False)
         Whether to print out features that are being dropped.
@@ -103,70 +147,150 @@ class PollutionSelect:
 
     successes_ : int
         Number of times the test score succeeded in meeting self.threshold
-    """
+"""
 
     def __init__(
         self,
         model,
-        performance_function,
-        performance_threshold,
-        n_iter=100,
-        subsample_ratio=0.5,
-        pollute_type="random_k",
-        pollute_k=1,
-        additional_pollution=True,
-        drop_features=False,
-        min_features=None,
-        drop_every_n_iters=5,
-        use_predict_proba=False,
-        feature_names=None,
-        verbose=False,
-    ):
+        performance_function: Optional[
+            Callable[[np.ndarray, np.ndarray], float]
+        ] = None,
+        performance_threshold: Optional[float] = None,
+        n_iter: int = 100,
+        data_subsample_ratio: float = 0.5,
+        pollute_type: str = "random_k",
+        pollute_k: int = 1,
+        additional_pollution: bool = True,
+        mask_type: str = "binary",
+        drop_features: bool = False,
+        min_features: int = 1,
+        drop_every_n_iters: int = 5,
+        use_predict_proba: bool = False,
+        feature_names: Optional[List[str]] = None,
+        parallel: Union[bool, int] = False,
+        verbose: bool = False,
+    ) -> None:
         self.model = model
         self.metric = performance_function
         self.threshold = performance_threshold
         self.n_iter = n_iter
-        self.subsample_ratio = subsample_ratio
+        self.data_subsample_ratio = data_subsample_ratio
         self.pollute_type = pollute_type
         self.pollute_k = pollute_k
         self.additional_pollution = additional_pollution
+        self.mask_type = mask_type
         self.drop_features = drop_features
         self.min_features = min_features
         self.drop_every_n_iters = drop_every_n_iters
         self.use_predict_proba = use_predict_proba
+        self.parallel = parallel
         self.verbose = verbose
 
+        # check model
+        if not hasattr(self.model, "fit"):
+            raise TypeError("Model does not have a fit() method")
+        if not hasattr(self.model, "predict"):
+            raise TypeError("Model does not have a predict() method")
+
+        # check that that metric and threshold are defined together
+        if self.metric is not None and self.threshold is None:
+            raise TypeError("Threshold cannot be none if metric is provided.")
+        if self.metric is None and self.threshold is not None:
+            raise TypeError("Metric cannot be none if threshold is provided.")
+
+        # check metric
+        if (
+            self.metric is not None
+            and not len(inspect.signature(self.metric).parameters) == 2
+        ):
+            raise TypeError(
+                "metric should only take in two parameters,"
+                " e.g., acc(y_true, y_preds)"
+            )
+
+        # check threshold
+        if self.threshold is not None and not isinstance(self.threshold, (int, float)):
+            raise TypeError("self.threshold is not an int or float")
+
+        # check iters
+        if n_iter <= 0:
+            raise ValueError(
+                "Number of iterations cannot be less than or equal to zero."
+            )
+        elif n_iter <= 10:
+            warnings.warn("Less than 10 iters doesn't give good importance scores.")
+
+        # check data subsample
+        if not (0 < self.data_subsample_ratio < 1):
+            raise ValueError("Data subsample should be greater than 0 and less than 1.")
+
+        # check pollute type and k
+        if pollute_type not in ["random_k", "all"]:
+            raise ValueError("Pollution type should be 'random_k' or 'all'")
+        if pollute_type == "random_k" and (
+            not isinstance(pollute_k, int) or pollute_k <= 0
+        ):
+            raise TypeError("Pollute k must be a positive integer greater than 0.")
+
+        # check additional pollution
+        if not isinstance(self.additional_pollution, bool):
+            raise TypeError("Additional pollution is not a boolean or int.")
+
+        # check mask type
+        mask_types = [
+            "binary",
+            "delta",
+            "negative",
+            "test_weighted",
+            "delta_negative",
+            "extreme_delta_negative",
+        ]
+        if mask_type not in mask_types:
+            raise ValueError("Mask type should be 'binary' or 'weighted'")
+
+        # check feature dropping
+        if not isinstance(self.drop_features, bool):
+            raise TypeError("drop features is not a boolean.")
+
+        if drop_features:
+            if self.min_features == 1:
+                warnings.warn(
+                    "Minimum number of features is set to 1 "
+                    "and this can lead to almost every feature being dropped."
+                    " Please modify this value for the desired behavior."
+                )
+            if not isinstance(self.min_features, int) and self.min_features < 1:
+                raise TypeError("min features is not a positive integer.")
+
+            if not isinstance(drop_every_n_iters, int) and self.min_features < 1:
+                raise TypeError("drop_every_n_iters is not a positive integer.")
+
+        # check predict proba
+        if not isinstance(self.use_predict_proba, bool):
+            raise TypeError("use_predict_proba is not a boolean.")
+
+        # check feature names
         if feature_names:
-            if type(feature_names) != list:
+            if not isinstance(feature_names, collections.abc.Sequence) or isinstance(
+                feature_names, str
+            ):
                 raise TypeError("Feature names is not a list.")
+
             self._name_mapping = {idx: name for idx, name in enumerate(feature_names)}
 
-        if pollute_type and type(pollute_k) != int:
-            raise TypeError("Pollute k must be an integer.")
+        # check parallel
+        if not isinstance(self.parallel, (bool, int)):
+            raise TypeError("parallel is not a boolean.")
 
-        if not drop_features:
-            if min_features:
-                warnings.warn(
-                    "Min features specified but drop_features is false. Ignoring."
-                )
-            if drop_every_n_iters != 5:
-                warnings.warn(
-                    "drop_every_n_iters modified but drop_features is false. Ignoring."
-                )
-        else:
-            if not min_features:
-                raise TypeError("Min features not defined for drop_features.")
+        # check verbosity
+        if not isinstance(self.verbose, bool):
+            raise TypeError("verbose is not a boolean.")
 
         # parameters set using intuition
         self._additional_pollute_k = 2 if self.additional_pollution else 0
         self._drop_start_iter = 5
 
-        if not hasattr(model, "fit"):
-            raise TypeError("Model does not have a fit() method")
-        if not hasattr(model, "predict"):
-            raise TypeError("Model does not have a predict() method")
-
-    def fit(self, X, y):
+    def fit(self, X: np.ndarray, y: np.ndarray) -> None:
         """Find consistently useful features
 
         Parameters
@@ -182,57 +306,124 @@ class PollutionSelect:
         self : object
 
         """
+        if not isinstance(X, np.ndarray):
+            raise TypeError("X is not a numpy array.")
 
-        self._init_fit_params(X)
+        if not isinstance(y, np.ndarray):
+            raise TypeError("y is not a numpy array.")
+
         n_features = X.shape[1]
-        mask_array = np.zeros(n_features)
+        if hasattr(self, "_name_mapping") and len(self._name_mapping) != X.shape[1]:
+            raise ValueError(
+                f"Length of feature names {len(self._name_mapping)} don't match number of features {n_features}."
+            )
+
         if self.pollute_k > n_features:
-            raise ValueError("Pollute k must be less than or equal # of features")
-
-        for iter_idx in range(self.n_iter):
-            X_sample = X[:, self.retained_features_]
-            n_features = X_sample.shape[1]
-
-            X_pollute = self._pollute_data(
-                X_sample, self.pollute_type, self.pollute_k, self._additional_pollute_k
+            raise ValueError(
+                f"Pollute k must be less than or equal # of features {n_features}"
             )
+        mask_array = np.zeros(n_features)
+        self._init_fit_params(X)
 
-            X_train, X_test, y_train, y_test = train_test_split(
-                X_pollute,
-                y,
-                test_size=(1 - self.subsample_ratio),
-                stratify=y,
-                shuffle=True,
-            )
+        if self.parallel:
+            pool = self._get_parallel_pool()
 
-            train_score, test_score = self._fit_predict_score(
-                X_train, X_test, y_train, y_test
-            )
-
-            if test_score >= self.threshold:
-                pollute_shape = self._get_pollute_shape()
-                mask = self._create_mask_from_pollution(
-                    n_features, pollute_shape, self.model.feature_importances_
-                )
-                mask_array[self.retained_features_] += mask
-                self.successes_ += 1
-                self.feature_importances_[self.retained_features_] = (
-                    mask_array[self.retained_features_] / self.successes_
-                )
+            if self.drop_features:
+                iters = int(self.n_iter / self.drop_every_n_iters)
+                drop_every = self.drop_every_n_iters
             else:
-                if self.verbose:
-                    print(
-                        f"Did not meet tests threshold: {self.metric}>{self.threshold}"
-                    )
-                self.failures_ += 1
+                iters = 1
+                drop_every = self.n_iter
+        else:
+            iters = self.n_iter
 
-            self._record_iter(iter_idx, train_score, test_score)
+        iter_idx = 0
+        for _ in range(iters):
+            X_sample = X[:, self.retained_features_]
+
+            if self.parallel:
+                results = []
+                for _ in range(drop_every):
+                    mp_args = (X_sample, y)
+                    mp_result = pool.apply_async(self._train_model, args=mp_args)
+                    results.append(mp_result)
+                results = [result.get() for result in results]
+                masks, test_scores, train_scores = list(zip(*results))
+            else:
+                mask, test_score, train_score = self._train_model(X_sample, y)
+                masks = [mask]
+                test_scores = [test_score]
+                train_scores = [train_score]
+
+            for mask, train_score, test_score in zip(masks, train_scores, test_scores):
+                if self.metric is None or test_score >= self.threshold:
+                    mask_array[self.retained_features_] += mask
+                    self.successes_ += 1
+                    self.feature_importances_[self.retained_features_] = (
+                        mask_array[self.retained_features_] / self.successes_
+                    )
+                else:
+                    if self.verbose:
+                        print(
+                            f"Did not meet test threshold: "
+                            f"{self.metric.__name__}=={test_score} < {self.threshold}"
+                        )
+                    self.failures_ += 1
+                self._record_iter(iter_idx, train_score, test_score)
+                iter_idx += 1
+
             if self.drop_features:
                 self._eval_dropping_conditions(iter_idx)
 
+        if self.parallel:
+            pool.close()
+            pool.join()
+
         return self
 
-    def transform(self, X):
+    def _get_parallel_pool(self):
+        """Utility function for initializing pool of workers"""
+        parallel_bool_flag = isinstance(self.parallel, bool)
+        if not parallel_bool_flag and self.parallel > mp.cpu_count():
+            raise ValueError(
+                f"More workers specified ({self.parallel})"
+                f" than are available on this"
+                f" machine ({mp.cpu_count()})"
+            )
+        num_workers = self.parallel if not parallel_bool_flag else mp.cpu_count()
+        pool = mp.Pool(num_workers)
+        return pool
+
+    def _train_model(self, X_sample: np.ndarray, y: np.ndarray):
+        """Utility function for pollution, training and mask generation"""
+
+        # number of features may change as features are dropped across iters
+        n_features = X_sample.shape[1]
+        X_pollute = self._pollute_data(
+            X_sample, self.pollute_type, self.pollute_k, self._additional_pollute_k
+        )
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_pollute,
+            y,
+            test_size=(1 - self.data_subsample_ratio),
+            stratify=y,
+            shuffle=True,
+        )
+        train_score, test_score = self._fit_predict_score(
+            X_train, X_test, y_train, y_test
+        )
+
+        pollute_count = self._get_pollute_count()
+        mask = self._create_mask_from_pollution(
+            n_features=n_features,
+            pollute_shape=pollute_count,
+            importances=self.model.feature_importances_,
+            test_score=test_score,
+        )
+        return mask, test_score, train_score
+
+    def transform(self, X: np.ndarray) -> np.ndarray:
         """Return the dataset with the selected features
 
         Parameters
@@ -250,9 +441,19 @@ class PollutionSelect:
             raise NotFittedError(
                 "Selector has not been fit or retained feature list is empty."
             )
+
+        if not isinstance(X, np.ndarray):
+            raise TypeError("X is not a numpy array.")
+
+        if X.shape[1] != self.X_orig.shape[1]:
+            raise ValueError(
+                f"n_features do not match original data.\n"
+                f"X: {X.shape[1]} != X_orig {self.X_orig.shape[1]}"
+            )
+
         return X[:, self.retained_features_]
 
-    def fit_transform(self, X, y):
+    def fit_transform(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
         """
 
         Parameters
@@ -271,14 +472,16 @@ class PollutionSelect:
         self.fit(X, y)
         return self.transform(X)
 
-    def _record_iter(self, iter_idx, train_score, test_score):
+    def _record_iter(
+        self, iter_idx: int, train_score: float, test_score: float
+    ) -> None:
         """Track scores, features and importances at each iteration in the object"""
         self.train_scores_[iter_idx] = train_score
         self.test_scores_[iter_idx] = test_score
         self._features_at_iter.append(self.retained_features_.copy())
         self._importances_at_iter[iter_idx, :] = self.feature_importances_
 
-    def _init_fit_params(self, X_sample):
+    def _init_fit_params(self, X_sample: np.ndarray) -> None:
         """Initialize model attributes defined during predict"""
         self.X_orig = X_sample
         n_features = X_sample.shape[1]
@@ -292,7 +495,7 @@ class PollutionSelect:
         self._features_at_iter = list()
         self._importances_at_iter = np.zeros(shape=(self.n_iter, n_features))
 
-    def _eval_dropping_conditions(self, iter_idx):
+    def _eval_dropping_conditions(self, iter_idx: int) -> None:
         """Evaluate conditions for dropping features and drop the min importance"""
         dropping_condition = (
             iter_idx >= self._drop_start_iter
@@ -313,19 +516,151 @@ class PollutionSelect:
                     )
             self.dropped_features_.append(self.retained_features_.pop(min_feature))
 
+    def _create_mask_from_pollution(self, **kwargs) -> np.ndarray:
+
+        test_score = kwargs.pop("test_score")
+
+        if self.mask_type == "binary":
+            mask = self._create_binary_mask(**kwargs)
+        elif self.mask_type == "delta":
+            mask = self._create_delta_weighted_mask(**kwargs)
+        elif self.mask_type == "negative":
+            mask = self._create_negative_weight_mask(**kwargs)
+        elif self.mask_type == "test_weighted":
+            mask = self._create_test_weight_mask(**kwargs, test_score=test_score)
+        elif self.mask_type == "delta_negative":
+            mask = self._create_delta_weighted_negative_mask(**kwargs)
+        elif self.mask_type == "extreme_delta_negative":
+            mask = self._create_delta_weighted_extreme_negative_mask(**kwargs)
+        else:
+            mask = None
+
+        return mask
+
     @staticmethod
-    @njit(parallel=True)
-    def _create_mask_from_pollution(n_features, pollute_shape, importances):
-        """Create mask by comparing original feature importances to polluted features"""
+    def _create_binary_mask(
+        n_features: int, pollute_shape: int, importances: np.ndarray
+    ) -> np.ndarray:
+        """Create binary mask by comparing original feature importances
+         to polluted features and scoring 1 only if feature is more
+         important than every noisy feature."""
         pollute_idx = np.arange(n_features, n_features + pollute_shape)
 
         mask = np.zeros(n_features)
-        for i in prange(n_features):
+        for i in range(n_features):
             mask[i] = np.all(importances[i] > importances[pollute_idx])
 
         return mask
 
-    def _get_pollute_shape(self):
+    @staticmethod
+    def _create_delta_weighted_mask(
+        n_features: int, pollute_shape: int, importances: np.ndarray
+    ) -> np.ndarray:
+        """ Extends the binary mask by additionally weighting by differences in
+         feature importance and then normalizing into [0,1]"""
+        pollute_idx = np.arange(n_features, n_features + pollute_shape)
+
+        mask = np.zeros(n_features)
+        deltas = np.zeros(n_features)
+        for i in range(n_features):
+            mask[i] = np.all(importances[i] > importances[pollute_idx])
+            deltas[i] = importances[i] - np.max(importances[pollute_idx])
+
+        max_element = np.max(deltas)
+        min_element = np.min(deltas)
+        deltas_norm = (deltas - min_element) / (max_element - min_element)
+        weighted_mask = mask * deltas_norm
+
+        return weighted_mask
+
+    @staticmethod
+    def _create_negative_weight_mask(
+        n_features: int, pollute_shape: int, importances: np.ndarray
+    ) -> np.ndarray:
+        """ Extends the binary mask by assigning an original features which fails
+         to beat a noisy feature a negative score """
+        pollute_idx = np.arange(n_features, n_features + pollute_shape)
+        scaling = 1 / pollute_shape
+
+        mask = np.zeros(n_features)
+        for i in range(n_features):
+            feat_comparison = importances[i] > importances[pollute_idx]
+            scaled_comparison = np.where(feat_comparison, scaling, -1 * scaling)
+            mask[i] = np.sum(scaled_comparison)
+
+        return mask
+
+    @staticmethod
+    def _create_test_weight_mask(
+        n_features: int, pollute_shape: int, importances: np.ndarray, test_score: float
+    ) -> np.ndarray:
+        """ Extends the binary mask by scaling by test score"""
+        pollute_idx = np.arange(n_features, n_features + pollute_shape)
+
+        mask = np.zeros(n_features)
+        for i in range(n_features):
+            mask[i] = np.all(importances[i] > importances[pollute_idx])
+
+        weighted_mask = mask * test_score if test_score is not None else mask
+        max_element = np.max(weighted_mask)
+        min_element = np.min(weighted_mask)
+        weighted_mask_norm = (weighted_mask - min_element) / (max_element - min_element)
+
+        return weighted_mask_norm
+
+    @staticmethod
+    def _create_delta_weighted_negative_mask(
+        n_features: int, pollute_shape: int, importances: np.ndarray
+    ) -> np.ndarray:
+        """ Combines the delta weighting and negative mask methods; feature
+            receives + points for beating each noisy feature and - points for
+            each redundant failure it fails to beat. The delta is still calculated as
+            the difference between the importance and the max noisy feature importance.
+
+            Any non-zero scores are scaled by their deltas.
+            """
+        pollute_idx = np.arange(n_features, n_features + pollute_shape)
+        scaling = 1 / pollute_shape
+
+        mask = np.zeros(n_features)
+        deltas = np.zeros(n_features)
+        for i in range(n_features):
+            feat_comparison = importances[i] > importances[pollute_idx]
+            scaled_comparison = np.where(feat_comparison, scaling, -1 * scaling)
+            mask[i] = np.sum(scaled_comparison)
+            deltas[i] = importances[i] - np.max(importances[pollute_idx])
+
+        max_element = np.max(deltas)
+        min_element = np.min(deltas)
+        delta_norm = (deltas - min_element) / (max_element - min_element)
+        mask[mask > 0] = mask[mask > 0] * delta_norm[mask > 0]
+
+        return mask
+
+    @staticmethod
+    def _create_delta_weighted_extreme_negative_mask(
+        n_features: int, pollute_shape: int, importances: np.ndarray
+    ) -> np.ndarray:
+        """ Combines the delta weight with a more extreme version of negative scaling
+            where the feature must beat all noisy features to get a positive score.
+        """
+        pollute_idx = np.arange(n_features, n_features + pollute_shape)
+
+        mask = np.zeros(n_features)
+        deltas = np.zeros(n_features)
+        for i in range(n_features):
+            mask[i] = np.all(importances[i] > importances[pollute_idx])
+            deltas[i] = importances[i] - np.max(importances[pollute_idx])
+
+        mask[mask == 0] = -1
+        max_element = np.max(deltas)
+        min_element = np.min(deltas)
+        deltas_norm = (deltas - min_element) / (max_element - min_element)
+        mask[mask > 0] = mask[mask > 0] * deltas_norm[mask > 0]
+
+        return mask
+
+    def _get_pollute_count(self) -> int:
         """Create pollution shape"""
         pollute_shape = (
             self.pollute_k + self._additional_pollute_k
@@ -334,7 +669,13 @@ class PollutionSelect:
         )
         return pollute_shape
 
-    def _fit_predict_score(self, X_train, X_test, y_train, y_test):
+    def _fit_predict_score(
+        self,
+        X_train: np.ndarray,
+        X_test: np.ndarray,
+        y_train: np.ndarray,
+        y_test: np.ndarray,
+    ) -> Tuple[float, float]:
         """fit and predict model, returning scores on defined metric"""
         self.model.fit(X_train, y_train)
         if not hasattr(self.model, "feature_importances_"):
@@ -347,13 +688,23 @@ class PollutionSelect:
             train_preds = self.model.predict_proba(X_train)
             test_preds = self.model.predict_proba(X_test)
 
-        train_score = self.metric(y_train, train_preds)
-        test_score = self.metric(y_test, test_preds)
+        train_score, test_score = None, None
+        if self.metric is not None:
+            train_score = self.metric(y_train, train_preds)
+            test_score = self.metric(y_test, test_preds)
+
+            if not isinstance(train_score, (int, float)):
+                raise TypeError("self.metric did not return an integer or float")
+
+            if not isinstance(test_score, (int, float)):
+                raise TypeError("self.metric did not return an integer or float")
+
         return train_score, test_score
 
     @staticmethod
-    @njit
-    def _pollute_data(X, pollute_type, pollute_k, additional_pollute_k):
+    def _pollute_data(
+        X: np.ndarray, pollute_type: str, pollute_k: int, additional_pollute_k: int
+    ) -> np.ndarray:
         """Create polluted feature representation (adds noisy features)"""
 
         n_samples, n_features = X.shape
@@ -383,7 +734,7 @@ class PollutionSelect:
 
         return np.concatenate((X, X_pollute), axis=1)
 
-    def plot_test_scores_by_iters(self):
+    def plot_test_scores_by_iters(self) -> None:
         """Plot tests scores against feature importances"""
         if not hasattr(self, "feature_importances_"):
             raise NotFittedError("Model has not been fit yet.")
@@ -392,7 +743,7 @@ class PollutionSelect:
         plt.title("Test scores (average across k-folds) by iterations.")
         plt.show()
 
-    def plot_test_scores_by_n_features(self):
+    def plot_test_scores_by_n_features(self) -> None:
         """Plot tests scores against n_features"""
         if not hasattr(self, "feature_importances_"):
             raise NotFittedError("Model has not been fit yet.")
@@ -403,34 +754,3 @@ class PollutionSelect:
         plt.plot(test_df_agg.index, test_df_agg.test_score, marker="o")
         plt.title("Test scores (average across k-folds) by number of features.")
         plt.show()
-
-
-if __name__ == "__main__":
-
-    from sklearn.datasets import make_classification
-    from sklearn.ensemble import RandomForestClassifier
-
-    def acc(y, preds):
-        return np.mean(y == preds)
-
-    X, y = make_classification(
-        n_samples=10000, n_features=20, n_informative=10, n_redundant=5
-    )
-
-    model = RandomForestClassifier()
-    selector = PollutionSelect(
-        model,
-        n_iter=100,
-        pollute_type="random_k",
-        drop_features=False,
-        performance_threshold=0.7,
-        performance_function=acc,
-    )
-
-    import time
-
-    start = time.time()
-    X_dropped = selector.fit_transform(X, y)
-    end = time.time()
-    print(end - start)
-    print(selector.feature_importances_)

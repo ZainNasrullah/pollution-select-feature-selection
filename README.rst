@@ -16,7 +16,7 @@ Algorithm
 * As input, Pollution Select receives a model, a performance evaluation function and a threshold.
 * For n_iters:
 
-  - Generate k+2 polluted features by permuting k random features and creating two noisy features
+  - Generate k+2 polluted features by selecting k random features, shuffling them to decorrelate with the target, and additionally creating two noisy features by drawing from distributions
   - Train the model on a polluted training set with d + k + 2 features and checks that the desired performance threshold is met on the test set (else skip iteration)
   - Compare the importance of each original feature to every polluted feature. Assigns each feature a score of 1 for the iteration if its importance is greater than every noisy feature
   - Update the overall importance of each feature as cumulative_score / n_iterations
