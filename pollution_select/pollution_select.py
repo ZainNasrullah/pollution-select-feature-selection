@@ -60,6 +60,35 @@ class PollutionSelect:
         - Random normal (mean 0, variance 1)
         - Randomly drawn samples from [0, 1] using a discrete uniform distribution
 
+    mask_type: str, optional (default="binary")
+        specifies the type of mask to use based on the following:
+
+        binary:
+            scores 1 only if the feature is more important than every noisy feature
+
+        delta:
+            weights each original feature by the difference between its importance
+            value and the maximum noisy feature importance and then normalizes
+            values into [0,1]
+
+        negative:
+            each original feature is assigned a + score (1/n_noisy_features) for all
+            noisy features that it beats and a - score for all noisy features it fails
+            to beat. The returned mask is the sum of scores for each feature.
+
+        test_weighted:
+            extends binary by scaling by test score and normalizing (assumes positive
+            test score == good)
+
+        negative_delta:
+            combines delta+negative mask schemes. Features are first scored by how many
+            noisy features beat (+ score for each win, - score for each loss) and then
+            the positive scores are scaled by delta.
+
+        extreme_negative_delta:
+            similar to negative_delta but score is 1 if it beats all noisy features
+            and -1 otherwise. Then all positive scores are scaled by delta.
+
     drop_features : bool, optional (default=False)
         Whether to drop features. By default performs a check every
         `drop_every_n_iters` iterations and only drops the feature with consistently
@@ -118,7 +147,7 @@ class PollutionSelect:
 
     successes_ : int
         Number of times the test score succeeded in meeting self.threshold
-    """
+"""
 
     def __init__(
         self,
@@ -214,7 +243,7 @@ class PollutionSelect:
             "negative",
             "test_weighted",
             "delta_negative",
-            "extreme_delta_negative"
+            "extreme_delta_negative",
         ]
         if mask_type not in mask_types:
             raise ValueError("Mask type should be 'binary' or 'weighted'")
@@ -583,7 +612,13 @@ class PollutionSelect:
     def _create_delta_weighted_negative_mask(
         n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
-        """ Combines the delta weighting and negative mask methods"""
+        """ Combines the delta weighting and negative mask methods; feature
+            receives + points for beating each noisy feature and - points for
+            each redundant failure it fails to beat. The delta is still calculated as
+            the difference between the importance and the max noisy feature importance.
+
+            Any non-zero scores are scaled by their deltas.
+            """
         pollute_idx = np.arange(n_features, n_features + pollute_shape)
         scaling = 1 / pollute_shape
 
@@ -606,7 +641,9 @@ class PollutionSelect:
     def _create_delta_weighted_extreme_negative_mask(
         n_features: int, pollute_shape: int, importances: np.ndarray
     ) -> np.ndarray:
-        """ Combines the delta weight with a more extreme version of negative scaling"""
+        """ Combines the delta weight with a more extreme version of negative scaling
+            where the feature must beat all noisy features to get a positive score.
+        """
         pollute_idx = np.arange(n_features, n_features + pollute_shape)
 
         mask = np.zeros(n_features)
